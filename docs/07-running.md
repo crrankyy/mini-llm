@@ -1,103 +1,130 @@
 # 07: Running the code
 
-## Environment
+## Setup
 
-The repository declares no dependencies: there is no `pyproject.toml`, `requirements.txt` or lock file. The imports are:
+Dependencies are declared in `pyproject.toml`, and `uv.lock` records the versions uv resolved.
 
-| Package | Needed by |
-|---|---|
-| `torch` | everything except the stage 1 regex tokenizers |
-| `tiktoken` | every script that tokenizes with `cl100k_base` |
-| `numpy` | `src/utils/dataloader.py`, `prepare_wikitext.py` |
-| `datasets`, `tqdm` | `prepare_wikitext.py` only |
-
-The checks in these docs ran in a throwaway environment that leaves the repo untouched:
+| Package | Needed by | Declared as |
+|---|---|---|
+| `torch` | everything except the stage 1 regex tokenizers | dependency |
+| `tiktoken` | every script that tokenizes with `cl100k_base` | dependency |
+| `numpy` | `src/mini_llm/data.py`, `scripts/prepare_wikitext.py` | dependency |
+| `datasets`, `tqdm` | `scripts/prepare_wikitext.py` only | the `data` extra |
+| `pytest` | the tests | the `dev` group |
 
 ```sh
-uv run --no-project --python 3.10 --with 'torch==2.2.2' --with 'numpy<2' --with tiktoken python <script>
+uv sync                  # the library, its dependencies and pytest
+uv sync --extra data     # also datasets and tqdm
 ```
 
-Those pins are what was used on the Intel Mac the checks ran on. Other versions were not tried.
+`uv sync` installs `mini_llm` in editable mode into `.venv/`. Without uv, `pip install -e ".[data]"` does the same; that is what the Colab notebook uses.
 
-`tiktoken` downloads the `cl100k_base` vocabulary the first time it is used and caches it, so the first run needs network access.
+**Pins for the Intel Mac.** PyTorch 2.2.2 is the last release with wheels for Intel Macs. It was built against NumPy 1.x and has no wheel for Python 3.13 or later. The manifest therefore sets, for that platform only, `torch==2.2.2`, `numpy<2` and, in the `data` extra, `pyarrow<26` (pyarrow 26 needs NumPy 2). `.python-version` makes uv use Python 3.10. Other platforms get any PyTorch from 2.2.2 on.
 
-## Always run from the repo root
-
-Three things depend on it:
-
-1. **Imports.** There are no `__init__.py` files and nothing is installed as a package. `from src.model import GPTModel` resolves only when the repo root is on `sys.path`.
-2. **Data paths.** `data/basic-data.txt` and `data/wikitext-103/` are opened relative to the working directory.
-3. **Outputs.** Checkpoints and weights are written to the working directory.
-
-Python puts a script's own folder on `sys.path` when the script is run by path, and the working directory when a module is run with `-m`. That decides how each file has to be started:
-
-- Root scripts (`test.py`, `train_wikitext.py`, ...) run by path, because their folder is the root.
-- Scripts under `src/` that import `src.*` must be run with `-m`.
-- Scripts under `src/` that import only third-party packages, or a sibling by bare name, run by path.
-
-## Study scripts
-
-Each command was run from the repo root.
+Verified on the Intel Mac the docs were checked on:
 
 | Command | Result |
 |---|---|
-| `python device.py` | runs |
-| `python src/p01_tokenization/simple_tokenizer.py` | runs; ends with "Decoded text matches the original text!" |
-| `python src/p01_tokenization/test_simple_tokenizer.py` | runs |
-| `python src/p01_tokenization/test_byte_pair_encoding.py` | runs |
-| `python src/p02_data_loading/dataloader.py` | runs |
-| `python src/p02_data_loading/embedding.py` | runs |
-| `python -m src.p02_data_loading.embed_dataloader` | runs |
-| `python src/p02_data_loading/embed_dataloader.py` | fails: `ModuleNotFoundError: No module named 'src'` |
-| `python src/p03_attention/simple_attention.py` | runs |
-| `python src/p03_attention/self_attention.py` | runs |
-| `python src/p04_gpt/architecture.py` | fails: `ModuleNotFoundError: No module named 'sfeedforward'` |
-| `python -m src.p04_gpt.architecture` | fails with the same error |
+| `uv sync` | Python 3.10.20, torch 2.2.2, numpy 1.26.4, tiktoken 0.14.0 |
+| `uv sync --extra data` | adds datasets 5.1.0, pyarrow 25.0.1, pandas 2.3.3 |
+| `pip install -e ".[data]"` in a clean Python 3.12 environment | same torch, numpy, datasets and pyarrow; the scripts ran from another directory |
 
-`attention_modules.py`, `feedforward.py`, `loss.py`, `textgen.py` and the files in `src/utils/` only define things; running them prints nothing.
+Other platforms were not tried.
+
+`tiktoken` downloads the `cl100k_base` vocabulary the first time it is used and caches it, so the first run needs network access.
+
+## Run from the repo root
+
+Imports no longer depend on the working directory: once the package is installed, `from mini_llm.model.gpt import GPTModel` resolves anywhere. Three things still do depend on it:
+
+1. **Data paths.** `data/basic-data.txt` and `data/wikitext-103/` are opened relative to the working directory.
+2. **Outputs.** `checkpoints/` is created relative to the working directory unless `--checkpoint-dir` says otherwise.
+3. **Study scripts that import each other.** `study/` is not a package, so `import study.p02_data_loading.dataloader` resolves only when the repo root is on `sys.path`, which `python -m` arranges and running a file by path does not.
 
 ## Main workflow
 
-None of these four was run for these docs.
-
 ```sh
-python prepare_wikitext.py    # downloads WikiText-103, writes data/wikitext-103/*.bin
-python train_wikitext.py      # trains, checkpoints each epoch, resumes if checkpoints exist
-python test_inference.py      # loads weights from the working directory, starts a prompt loop
+uv run python scripts/prepare_wikitext.py    # downloads WikiText-103, writes data/wikitext-103/*.bin
+uv run python scripts/train_wikitext.py      # trains, checkpoints each epoch, resumes if checkpoints exist
+uv run python scripts/generate.py            # loads weights from checkpoints/, starts a prompt loop
 ```
+
+| Option | Script | Effect |
+|---|---|---|
+| `--checkpoint-dir DIR` | `train_wikitext.py` | write checkpoints and final weights to `DIR`, and resume from there |
+| `--checkpoint-dir DIR` | `generate.py` | search `DIR` for weights |
+| `--weights FILE` | `generate.py` | load exactly this weights or checkpoint file |
 
 And the small-data variant:
 
 ```sh
-python test.py                # CPU only
+uv run python scripts/train_tiny.py
 ```
 
-Before running `test.py`, note what it does: it trains the full 239M-parameter model for 10 epochs on CPU and writes a checkpoint after each epoch, an estimated 29 GB in total. See [05-training.md](05-training.md#testpy).
+Before running `train_tiny.py`, note what it does: it trains the full 239M-parameter model for 10 epochs and writes a checkpoint after each epoch into `checkpoints/tiny`, about 29 GB in total. See [05-training.md](05-training.md#train_tinypy).
 
-Before running `train_wikitext.py` or `test_inference.py`, check which `.pth` files are in the working directory. Both scripts choose files by name pattern; see [known issues 3 and 6](08-known-issues.md).
+How far each of these was run for the docs is listed in [README.md](README.md#snapshot). `train_wikitext.py` does not run on macOS as written; see [known issue 12](08-known-issues.md#12-train_wikitextpy-cannot-start-its-dataloader-workers-on-macos). The intended way to train is `train_colab.ipynb`, described in [05-training.md](05-training.md#colab-notebook).
+
+## Study scripts
+
+Each command was run from the repo root, with the project environment active or through `uv run`.
+
+| Command | Result |
+|---|---|
+| `python study/p01_tokenization/simple_tokenizer.py` | runs; ends with "Decoded text matches the original text!" |
+| `python study/p01_tokenization/test_simple_tokenizer.py` | runs |
+| `python study/p01_tokenization/test_byte_pair_encoding.py` | runs |
+| `python study/p02_data_loading/dataloader.py` | runs |
+| `python study/p02_data_loading/embedding.py` | runs |
+| `python -m study.p02_data_loading.embed_dataloader` | runs |
+| `python study/p02_data_loading/embed_dataloader.py` | fails: `ModuleNotFoundError: No module named 'study'` |
+| `python study/p03_attention/simple_attention.py` | runs |
+| `python study/p03_attention/self_attention.py` | runs |
+| `python study/p04_gpt/architecture.py` | runs |
+| `python -m study.p04_gpt.architecture` | runs |
+
+Except for `embed_dataloader`, whose embedding is not seeded, and `architecture.py`, which could not start before, every script prints exactly what it printed before the reorganization (verified by comparing the output).
+
+The modules under `src/mini_llm/` only define things; importing them prints nothing.
+
+## Tests
+
+```sh
+uv run pytest
+```
+
+Verified: `2 passed`. pytest is configured in `pyproject.toml` to collect from `tests/` only, because `study/` contains demo scripts named `test_*.py` that run at import.
 
 ## Devices
 
-| Script | Device |
-|---|---|
-| `test.py` | `cpu`, hardcoded |
-| `train_wikitext.py`, `test_inference.py` | `cuda` if available, otherwise `cpu` |
+`train_tiny.py`, `train_wikitext.py` and `generate.py` all call `get_device()` from `src/mini_llm/device.py`, which returns `cuda` if it is available, then `mps` (Apple's Metal backend), then `cpu`.
 
-There is no MPS branch anywhere, so on a Mac everything runs on CPU. `device.py` prints the selected device but no script imports it.
+| | CUDA | MPS | CPU |
+|---|---|---|---|
+| Mixed precision and gradient scaler | yes | no | no |
+| `torch.compile` in `train_wikitext.py` | attempted | skipped | attempted |
 
-Mixed precision and the gradient scaler are enabled only on CUDA.
+Measured on the Intel MacBook the docs were checked on (Radeon Pro 5300M, 4 GB), with torch 2.2.2:
+
+| Workload, full 239M model | CPU | MPS |
+|---|---|---|
+| One forward pass, 1 x 256 tokens | 0.300 s | 0.093 s |
+| One training step, batch 2 x 256 | 3.77 s | 2.68 s |
+| One training step, batch 4 x 256 | not run | out of memory |
+
+So MPS is worth having for `generate.py`, and that machine cannot train the full model at a useful batch size.
 
 ## What gets written to disk
 
 | Path | Written by | Contents | In `.gitignore` |
 |---|---|---|---|
-| `data/wikitext-103/train.bin`, `validation.bin` | `prepare_wikitext.py` | flat `uint32` token ids, 4 bytes each, no header | no |
-| `gpt_wikitext_checkpoint_ep{N}.pth` | the trainer, so both `test.py` and `train_wikitext.py` | dict: `epoch`, `model_state_dict`, `optimizer_state_dict`, `global_step`, `tokens_seen` | no |
-| `gpt_wikitext_checkpoint_interrupted.pth` | `train_wikitext.py` on `Ctrl-C` | dict: `epoch`, `model_state_dict`, `optimizer_state_dict` | no |
-| `gpt_wikitext_124M.pth` | `train_wikitext.py` at exit | bare state dict; keys prefixed `_orig_mod.` if the model was compiled | no |
+| `data/wikitext-103/train.bin`, `validation.bin` | `prepare_wikitext.py` | flat `uint32` token ids, 4 bytes each, no header | yes |
+| `checkpoints/gpt_wikitext_checkpoint_ep{N}.pth` | the trainer, called by `train_wikitext.py` | dict: `epoch`, `model_state_dict`, `optimizer_state_dict`, `global_step`, `tokens_seen` | yes |
+| `checkpoints/tiny/gpt_wikitext_checkpoint_ep{N}.pth` | the trainer, called by `train_tiny.py` | the same dict | yes |
+| `checkpoints/gpt_wikitext_checkpoint_interrupted.pth` | `train_wikitext.py` on `Ctrl-C` | dict: `epoch`, `model_state_dict`, `optimizer_state_dict` | yes |
+| `checkpoints/gpt_wikitext_124M.pth` | `train_wikitext.py` at exit | bare state dict; keys prefixed `_orig_mod.` if the model was compiled | yes |
 | `/content/data/wikitext-103/` | `train_wikitext.py` on Colab | copy of the `.bin` files | outside the repo |
+| `.venv/` | `uv sync` | the project environment | yes |
 | `__pycache__/` | Python | bytecode | yes |
 
-Hugging Face `datasets` also keeps its own download cache outside the repo.
-
-Since none of the `.pth` or `.bin` outputs are ignored, they show up in `git status` after a run.
+With `--checkpoint-dir`, the three `train_wikitext.py` rows move to that folder. Hugging Face `datasets` also keeps its own download cache outside the repo.

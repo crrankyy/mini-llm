@@ -4,11 +4,11 @@ Token ids become training examples by sliding a fixed-size window over them. The
 
 There are two dataset classes: `CustomDataset` holds everything in memory and is used for the small text file, and `MemMapDataset` reads a binary file on demand and is used for WikiText-103.
 
-## Stage 2 study scripts (`src/p02_data_loading/`)
+## Stage 2 study scripts (`study/p02_data_loading/`)
 
 ### `dataloader.py`
 
-The first version of `CustomDataset` and `create_dataloader`. The class is identical to the one in `src/utils/dataloader.py`; the factory has fewer parameters (`txt, batch_size=4, max_length=256, stride=128, shuffle=True`).
+The first version of `CustomDataset` and `create_dataloader`. The class is identical to the one in `src/mini_llm/data.py`; the factory has fewer parameters (`txt, batch_size=4, max_length=256, stride=128, shuffle=True`).
 
 `main()` prints the first two batches for `max_length=8, stride=4`, once with `batch_size=1` and once with `batch_size=4`, so the overlap between consecutive windows is visible.
 
@@ -20,9 +20,9 @@ Creates `nn.Embedding(8, 4)` with seed 123, prints its weight matrix, and looks 
 
 Takes one batch from the dataloader (`batch_size=8`, `max_length=128`, `stride=64`) and passes it through `nn.Embedding(tokenizer.n_vocab, 256)`, giving a `(8, 128, 256)` tensor. There is no positional embedding in this demo; that first appears in `GPTModel`.
 
-It imports `src.p02_data_loading.dataloader`, so it has to be run as a module from the repo root (verified; see [07-running.md](07-running.md)).
+It imports `study.p02_data_loading.dataloader`, so it has to be run as a module from the repo root (verified; see [07-running.md](07-running.md)).
 
-## `src/utils/dataloader.py`
+## `src/mini_llm/data.py`
 
 This is the version the entry points use.
 
@@ -38,7 +38,7 @@ for i in range(0, len(token_ids) - max_length + 1, stride):
 
 - `stride == max_length` gives non-overlapping windows; a smaller stride gives overlap.
 - Tokens after the last full window are dropped.
-- **Edge case (verified):** when `len(token_ids) - max_length` is an exact multiple of `stride`, the last window's target is one token short. With 16 tokens, `max_length=8`, `stride=4`, the third sample is `(8, 7)`, and batching it fails with `RuntimeError: stack expects each tensor to be equal size`. With 17 tokens all three samples are `(8, 8)`. `test.py` does not hit this with the current data.
+- **Edge case (verified):** when `len(token_ids) - max_length` is an exact multiple of `stride`, the last window's target is one token short. With 16 tokens, `max_length=8`, `stride=4`, the third sample is `(8, 7)`, and batching it fails with `RuntimeError: stack expects each tensor to be equal size`. With 17 tokens all three samples are `(8, 8)`. `train_tiny.py` does not hit this with the current data.
 
 ### `create_dataloader(txt, batch_size=4, max_length=256, stride=128, shuffle=True, drop_last=True, num_workers=0)`
 
@@ -69,7 +69,7 @@ The same wrapper for `MemMapDataset`. No tokenizer is involved, since the file a
 
 ## Preparing WikiText-103
 
-`prepare_wikitext.py` has one function, `prepare_data()`, run under a `main()` guard. This script was not run for these docs.
+`scripts/prepare_wikitext.py` has one function, `prepare_data()`, run under a `main()` guard. It needs the `data` extra (`datasets` and `tqdm`). The real download was not run for these docs; the script was run with `load_dataset` replaced by a few lines of text.
 
 1. `load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1")` downloads the dataset through Hugging Face `datasets`. A comment in the file records why the `Salesforce/` namespace is used: the plain `wikitext` name was deprecated.
 2. Creates `data/wikitext-103/`.
@@ -81,15 +81,17 @@ Things that follow from that code:
 - **File format.** A `.bin` file is a flat array of native-endian `uint32` token ids with no header: 4 bytes per token (verified: 1,000 tokens is 4,000 bytes). The reader must know the dtype, and `MemMapDataset` hardcodes the same one.
 - **No document boundaries.** Rows are concatenated as they come; no `<|endoftext|>` is inserted between articles.
 - **Memory.** A whole split is tokenized into an in-memory Python list, then copied into an array, before anything is written. `memmap` is used for the write and for later reads, so it bounds memory during training, not during preparation.
-- **Not ignored by git.** `data/wikitext-103/` is not in `.gitignore`.
+- **Ignored by git.** `data/wikitext-103/` is listed in `.gitignore`.
+
+Verified with the stand-in text: `train.bin` held exactly the ids the tokenizer produces for the non-blank rows, and `MemMapDataset` read it back with each target equal to its input shifted by one.
 
 ## Which loader each script uses
 
 | Script | Loader | Source | `batch_size` | `max_length` | `stride` | Train `shuffle` / `drop_last` | `num_workers` |
 |---|---|---|---|---|---|---|---|
-| `test.py` | `create_dataloader` | `data/basic-data.txt`, split 90/10 by characters | 2 | 256 | 256 | yes / yes | 0 |
+| `train_tiny.py` | `create_dataloader` | `data/basic-data.txt`, split 90/10 by characters | 2 | 256 | 256 | yes / yes | 0 |
 | `train_wikitext.py` | `create_memmap_dataloader` | `data/wikitext-103/*.bin` | 16 | 256 | 256 | yes / yes | 2 |
 
 Validation loaders in both scripts use `shuffle=False, drop_last=False`.
 
-For `test.py` the numbers are (verified): 20,480 characters, split at character 18,432; 4,423 training tokens giving 17 windows and 8 batches; 522 validation tokens giving 2 windows and 1 batch.
+For `train_tiny.py` the numbers are (verified): 20,480 characters, split at character 18,432; 4,423 training tokens giving 17 windows and 8 batches; 522 validation tokens giving 2 windows and 1 batch.

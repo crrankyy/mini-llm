@@ -1,10 +1,10 @@
 # 04: Model
 
-The model is assembled from three files: the building blocks in `src/p04_gpt/feedforward.py`, the block in `src/transformer.py`, and the full network in `src/model.py`. Attention is covered in [03-attention.md](03-attention.md).
+The model is assembled from three files: the building blocks in `src/mini_llm/model/layers.py`, the block in `src/mini_llm/model/block.py`, and the full network in `src/mini_llm/model/gpt.py`. Attention is covered in [03-attention.md](03-attention.md).
 
 ## The config
 
-`config.py` holds the only config used by the entry points:
+`src/mini_llm/config.py` holds the only config used by the entry points:
 
 ```python
 GPT_CONFIG_124M = {
@@ -28,9 +28,9 @@ GPT_CONFIG_124M = {
 | `drop_rate` | embedding dropout, attention-weight dropout, shortcut dropout | One rate for all three. |
 | `qkv_bias` | query/key/value `nn.Linear` layers | |
 
-`src/p04_gpt/architecture.py` defines a second dict with the same name but `vocab_size = 100277` and `context_length = 1024`. It is local to that sandbox file.
+`study/p04_gpt/architecture.py` defines a second dict with the same name but `vocab_size = 100277` and `context_length = 1024`. It is local to that sandbox file.
 
-## Building blocks (`src/p04_gpt/feedforward.py`)
+## Building blocks (`src/mini_llm/model/layers.py`)
 
 ### `LayerNorm(embedding_dimension)`
 
@@ -53,7 +53,7 @@ The tanh approximation:
 
 `Linear(D, 4D)`, `GELU`, `Linear(4D, D)`. With `D = 768` the hidden width is 3,072. It is applied to each position independently.
 
-## `TransformerBlock(config)` (`src/transformer.py`)
+## `TransformerBlock(config)` (`src/mini_llm/model/block.py`)
 
 A pre-norm block: normalization comes before each sub-layer, and each sub-layer's output is added back to its input.
 
@@ -73,7 +73,7 @@ x = x + shortcut
 
 Input and output are both `(B, T, D)`. One `nn.Dropout` instance, `drop_shortcut`, is used for both sub-layers; dropout has no state, so this behaves the same as two instances.
 
-## `GPTModel(config)` (`src/model.py`)
+## `GPTModel(config)` (`src/mini_llm/model/gpt.py`)
 
 | Attribute | Layer | Output shape |
 |---|---|---|
@@ -120,11 +120,11 @@ Verified by instantiating `GPTModel(GPT_CONFIG_124M)`:
 
 One block is 7,085,568 parameters: attention 2,360,064, feed-forward 4,722,432, and 1,536 for each of the two norms.
 
-At 4 bytes per parameter that is 913.11 MB, which is the size `test.py` and `train_wikitext.py` print. The state dict has 173 entries: 161 parameter tensors and the 12 attention-mask buffers.
+At 4 bytes per parameter that is 913.11 MB, which is the size `train_tiny.py` and `train_wikitext.py` print. The state dict has 173 entries: 161 parameter tensors and the 12 attention-mask buffers.
 
 **Why this is not 124M.** The two vocabulary-sized matrices account for 154.1M of the total. GPT-2 small reaches 124M with a 50,257-token vocabulary and an output head that shares the embedding matrix. This model has a vocabulary twice that size and does not share the matrix. The transformer stack itself, 85.0M, is the same size as GPT-2 small's apart from the missing query/key/value biases.
 
-## The sandbox: `src/p04_gpt/architecture.py`
+## The sandbox: `study/p04_gpt/architecture.py`
 
 A demo script for stage 4. It defines:
 
@@ -134,4 +134,6 @@ A demo script for stage 4. It defines:
 
 The module-level code then runs a two-sentence batch through `DummyGPT`, normalizes a small tensor by hand and with `LayerNorm`, checks the `FeedForward` output shape, compares gradients with and without shortcuts, and runs one `TransformerBlock`.
 
-**It does not run.** Line 5 is `from sfeedforward import LayerNorm, GELU, FeedForward`, and no module named `sfeedforward` exists. Verified: both `python src/p04_gpt/architecture.py` and `python -m src.p04_gpt.architecture` exit with `ModuleNotFoundError`. The other files import these names from `src.p04_gpt.feedforward`.
+It imports `LayerNorm`, `GELU`, `FeedForward` and `TransformerBlock` from the library, so it needs the package installed. Verified: `python study/p04_gpt/architecture.py` exits with code 0 and ends with `Output shape: torch.Size([2, 4, 768])`. Its `DummyGPT` is built at full size with a 1,024-token context, so the script allocates about 1 GB.
+
+Before the reorganization the script could not start: it imported from a module named `sfeedforward`, which never existed.

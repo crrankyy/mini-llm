@@ -1,16 +1,16 @@
 # 03: Attention
 
-Stage 3 lives in `src/p03_attention/`. It goes from attention with no trainable weights to the multi-head module that the model uses. Only `MultiHeadedAttention` from `attention_modules.py` is imported outside this folder.
+Stage 3 lives in `study/p03_attention/`. It goes from attention with no trainable weights to the multi-head module that the model uses. That module, `MultiHeadedAttention`, is in the library at `src/mini_llm/model/attention.py`.
 
 ## The three files
 
 | File | Role |
 |---|---|
-| `simple_attention.py` | Demo script: dot-product attention over raw embeddings |
-| `self_attention.py` | Demo script: scaled dot-product attention with query/key/value matrices, followed by the four classes |
-| `attention_modules.py` | The four classes on their own, importable without running a demo |
+| `study/p03_attention/simple_attention.py` | Demo script: dot-product attention over raw embeddings |
+| `study/p03_attention/self_attention.py` | Demo script: the four classes, then scaled dot-product attention with query/key/value matrices step by step |
+| `src/mini_llm/model/attention.py` | `MultiHeadedAttention` on its own, importable without running a demo |
 
-The class definitions in `self_attention.py` and `attention_modules.py` are identical copies.
+`MultiHeadedAttention` in the library is an identical copy of the class in `self_attention.py`. The three earlier classes exist only in `self_attention.py`.
 
 Both demo scripts work on one sentence, "The rivers danced under the moonlight as the stars whispered secrets to the sky.", which is 16 `cl100k_base` tokens, embedded with a seeded `nn.Embedding`.
 
