@@ -1,3 +1,4 @@
+import os
 import torch
 from datetime import datetime
 from mini_llm.training.loss import calc_loss_batch
@@ -6,11 +7,15 @@ from mini_llm.generation import generate_and_print_sample
 
 def train_model_v1(model, train_loader, val_loader,
                    optimizer, device, num_epochs,
-                   eval_frq, eval_iter, start_context, tokenizer, start_epoch=0):
-    
+                   eval_frq, eval_iter, start_context, tokenizer, start_epoch=0,
+                   checkpoint_dir="checkpoints"):
+
     train_losses, val_losses, track_tokens_seen = [], [], []
     tokens_seen, global_step = 0, -1
-    
+
+    # created up front so an unusable path fails before the first epoch, not after it
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
     device_type = 'cuda' if 'cuda' in str(device) else 'cpu'
     scaler = torch.cuda.amp.GradScaler() if device_type == 'cuda' else None
 
@@ -60,7 +65,7 @@ def train_model_v1(model, train_loader, val_loader,
             model, tokenizer, device, start_context
         )
 
-        checkpoint_path = f"gpt_wikitext_checkpoint_ep{epoch+1}.pth"
+        checkpoint_path = os.path.join(checkpoint_dir, f"gpt_wikitext_checkpoint_ep{epoch+1}.pth")
         torch.save({
             'epoch': epoch + 1,
             'model_state_dict': model.state_dict(),

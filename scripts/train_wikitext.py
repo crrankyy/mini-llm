@@ -1,3 +1,4 @@
+import argparse
 import torch
 import torch.nn as nn
 import tiktoken
@@ -10,7 +11,14 @@ from mini_llm.training.loss import calc_loss_loader
 from mini_llm.training.trainer import train_model_v1
 
 from mini_llm.config import GPT_CONFIG_124M
-    
+
+parser = argparse.ArgumentParser(description="Train the GPT model on WikiText-103.")
+parser.add_argument(
+    "--checkpoint-dir", default="checkpoints",
+    help="where checkpoints and the final weights are written, and where a resume looks for them"
+)
+checkpoint_dir = parser.parse_args().checkpoint_dir
+
 # Use GPU if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"")
@@ -83,7 +91,7 @@ num_epochs = 5 # Total number of epochs you want to train for
 
 import glob
 start_epoch = 0
-checkpoints = sorted(glob.glob("gpt_wikitext_checkpoint_ep*.pth"))
+checkpoints = sorted(glob.glob(os.path.join(checkpoint_dir, "gpt_wikitext_checkpoint_ep*.pth")))
 if checkpoints:
     latest_checkpoint = checkpoints[-1]
     print(f"Found checkpoint: {latest_checkpoint}. Resuming training...")
@@ -105,20 +113,23 @@ else:
         train_losses, val_losses, tokens_seen = train_model_v1(
             model, train_dataloader, val_dataloader, optimizer, device,
             num_epochs=num_epochs - start_epoch, eval_frq=500, eval_iter=10,
-            start_context="The secret to training large models is", tokenizer=tokenizer, start_epoch=start_epoch
+            start_context="The secret to training large models is", tokenizer=tokenizer, start_epoch=start_epoch,
+            checkpoint_dir=checkpoint_dir
         )
     except KeyboardInterrupt:
         print("\n[!] Training manually stopped! Saving emergency checkpoint...")
+        interrupted_path = os.path.join(checkpoint_dir, "gpt_wikitext_checkpoint_interrupted.pth")
         torch.save({
             'epoch': start_epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-        }, "gpt_wikitext_checkpoint_interrupted.pth")
-        print("--> Emergency checkpoint saved to 'gpt_wikitext_checkpoint_interrupted.pth'!")
+        }, interrupted_path)
+        print(f"--> Emergency checkpoint saved to '{interrupted_path}'!")
         print("You can safely close Colab now. Next time you run this, it will resume from here.")
 
 print("Training script finished.")
 
 print("Training complete. Saving model...")
-torch.save(model.state_dict(), "gpt_wikitext_124M.pth")
-print("Model saved to gpt_wikitext_124M.pth!")
+final_path = os.path.join(checkpoint_dir, "gpt_wikitext_124M.pth")
+torch.save(model.state_dict(), final_path)
+print(f"Model saved to {final_path}!")

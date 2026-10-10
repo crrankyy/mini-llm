@@ -143,5 +143,6 @@ num_epochs = 10
 train_losses, val_losses, tokens_seen = train_model_v1(
     model, train_dataloader, val_dataloader, optimizer, device,
     num_epochs=num_epochs, eval_frq=5, eval_iter=5,
-    start_context="Every effort moves you", tokenizer=tokenizer
+    start_context="Every effort moves you", tokenizer=tokenizer,
+    checkpoint_dir="checkpoints/tiny"
 )

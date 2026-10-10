@@ -16,6 +16,11 @@ GEMINI.md
 # Graphify Outputs
 graphify-out/
 
+# Generated data and model files
+checkpoints/
+*.pth
+data/wikitext-103/
+
 # IDEs & Editor Configuration
 .vscode/
 .idea/
