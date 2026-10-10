@@ -122,7 +122,7 @@ class MultiHeadedAttention(nn.Module):
 
         mask_bool = self.mask.bool()[:num_tokens, :num_tokens]
 
-        attention_scores.masked_fill(mask_bool, -torch.inf)
+        attention_scores = attention_scores.masked_fill(mask_bool, -torch.inf)
 
         attention_weights = torch.softmax(
             attention_scores/keys.shape[-1]**0.5, dim=-1

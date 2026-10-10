@@ -7,15 +7,14 @@ A GPT-style, decoder-only language model written from scratch in PyTorch. The re
 
 ## Snapshot
 
-These docs describe the code at commit `0bb727c` (2026-06-23). They were written on 2026-10-10.
+These docs describe the code at commit `0bb727c` (2026-06-23) plus the causal-mask fix made on 2026-10-11. They were written on 2026-10-10.
 
 Where a page says **verified**, the behaviour was checked by running the code on CPU with Python 3.10.20, torch 2.2.2, tiktoken 0.14.0 and numpy 1.26.4. The following were **not run**: `test.py`, `prepare_wikitext.py`, `train_wikitext.py` as a whole, the interactive loop in `test_inference.py`, and anything on CUDA. Statements about those come from reading the code.
 
-## Three things to know before reading the rest
+## Two things to know before reading the rest
 
-1. **The causal mask is never applied.** `MultiHeadedAttention` builds the mask but discards the result of `masked_fill`, so every position attends to later positions, including the token it is being trained to predict. Verified. See [08-known-issues.md](08-known-issues.md#1-the-causal-mask-is-never-applied).
-2. **The model has 239,365,632 parameters, not 124M.** The config keeps the name `GPT_CONFIG_124M`, but the vocabulary is twice GPT-2's and the output head is not tied to the token embedding. Verified. See [04-model.md](04-model.md#parameter-budget).
-3. **Everything assumes the repo root is the working directory.** There are no `__init__.py` files and no dependency manifest; imports such as `from src.model import GPTModel` and paths such as `data/basic-data.txt` only resolve from the root. See [07-running.md](07-running.md).
+1. **The model has 239,365,632 parameters, not 124M.** The config keeps the name `GPT_CONFIG_124M`, but the vocabulary is twice GPT-2's and the output head is not tied to the token embedding. Verified. See [04-model.md](04-model.md#parameter-budget).
+2. **Everything assumes the repo root is the working directory.** There are no `__init__.py` files and no dependency manifest; imports such as `from src.model import GPTModel` and paths such as `data/basic-data.txt` only resolve from the root. See [07-running.md](07-running.md).
 
 ## Pages
 

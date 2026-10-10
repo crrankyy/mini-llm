@@ -2,8 +2,6 @@
 
 Training is next-token prediction: the model's logits at each position are compared with the token that follows it, using cross-entropy. The shared pieces are in `src/utils/`; `test.py` and `train_wikitext.py` are the two scripts that call them.
 
-Read [08-known-issues.md](08-known-issues.md#1-the-causal-mask-is-never-applied) alongside this page. Because the attention mask is not applied, the losses these functions report do not measure next-token prediction.
-
 ## Loss (`src/utils/loss.py`)
 
 ### `calc_loss_batch(input_batch, target_batch, model, device)`

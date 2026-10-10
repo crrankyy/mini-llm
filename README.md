@@ -6,7 +6,7 @@ The repository builds the pieces up in four stages (tokenization, data loading, 
 
 ## Status
 
-This is a learning project, documented as it stands. Before training with it, know that the causal attention mask is built but never applied (`src/p03_attention/attention_modules.py:125`), so the model can read future tokens during training. That and nine other known defects are described in [docs/08-known-issues.md](docs/08-known-issues.md).
+This is a learning project, documented as it stands. Its nine known defects are described in [docs/08-known-issues.md](docs/08-known-issues.md).
 
 ## What is in here
 

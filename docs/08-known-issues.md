@@ -2,13 +2,13 @@
 
 Places where the code does something different from what it appears to do, ordered by how much they affect results. Each item gives the location, the behaviour, and how it was established.
 
-Line numbers refer to commit `0bb727c`. Nothing listed here has been changed in the code. "Verified" means the behaviour was reproduced on CPU with torch 2.2.2; "from reading" means it was not run.
+Line numbers refer to commit `0bb727c`. Issue 1 was fixed on 2026-10-11; nothing else listed here has been changed in the code. "Verified" means the behaviour was reproduced on CPU with torch 2.2.2; "from reading" means it was not run.
 
 ## Summary
 
 | # | Issue | Location | Status |
 |---|---|---|---|
-| 1 | Causal mask is never applied | `src/p03_attention/attention_modules.py:125` | verified |
+| 1 | Causal mask was never applied | `src/p03_attention/attention_modules.py:125` | fixed 2026-10-11 |
 | 2 | Resuming into a compiled model fails | `train_wikitext.py:73`, `:95` | verified on torch 2.2.2 |
 | 3 | Interrupt checkpoint is never resumed; final weights saved regardless | `train_wikitext.py:86`, `:116`, `:123` | sort order verified, rest from reading |
 | 4 | `architecture.py` cannot be imported | `src/p04_gpt/architecture.py:5` | verified |
@@ -21,22 +21,23 @@ Line numbers refer to commit `0bb727c`. Nothing listed here has been changed in 
 
 ## Details
 
-### 1. The causal mask is never applied
+### 1. The causal mask was never applied (fixed)
+
+Fixed on 2026-10-11. Until then the code was:
 
 ```python
 mask_bool = self.mask.bool()[:num_tokens, :num_tokens]
 attention_scores.masked_fill(mask_bool, -torch.inf)
 ```
 
-`masked_fill` returns a new tensor. The result is not assigned, so `attention_scores` reaches softmax unmasked and every position attends to the positions after it. The same line is in the copy at `src/p03_attention/self_attention.py:126`; the model imports the one in `attention_modules.py`.
+`masked_fill` returns a new tensor. The result was not assigned, so `attention_scores` reached softmax unmasked and every position attended to the positions after it. The second line now assigns the result back to `attention_scores`, both in `attention_modules.py` and in the copy at `src/p03_attention/self_attention.py:126`.
 
-What follows from it:
+What followed from the bug:
 
-- **Training and validation loss.** Position `t` is trained to predict token `t + 1` and can read token `t + 1` through attention. The loss can fall by copying, so neither the training nor the validation number measures next-token prediction.
-- **Generation.** The last position has no later tokens to read. The model is sampled under conditions it was not trained for.
-- **Existing weights.** Any weights produced by this code were trained without the mask. How much that degrades their output was not measured.
+- **Training and validation loss.** Position `t` was trained to predict token `t + 1` and could read token `t + 1` through attention. The loss could fall by copying, so neither the training nor the validation number measured next-token prediction.
+- **Existing weights.** Any weights produced before the fix were trained without the mask and need retraining.
 
-Reproduce from the repo root:
+Check from the repo root:
 
 ```python
 import torch
@@ -55,9 +56,7 @@ with torch.no_grad():
     print((model(a) - model(b)).abs().amax(dim=-1)[0])
 ```
 
-Observed: `tensor([0.0890, 0.0892, 0.0777, 0.0741, 0.0840, 1.2428])`. With a working mask the first five values are exactly zero, because nothing before the last position can see the change.
-
-The usual form assigns the result: `attention_scores = attention_scores.masked_fill(mask_bool, -torch.inf)`. Weights trained before such a change learned to rely on later tokens, so they would need retraining.
+Before the fix this printed `tensor([0.0890, 0.0892, 0.0777, 0.0741, 0.0840, 1.2428])`. It now prints `tensor([0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 1.2433])`: the first five values are exactly zero, because nothing before the last position can see the change.
 
 ### 2. Resuming into a compiled model fails
 
@@ -161,4 +160,4 @@ Later stages copy earlier code forward. When changing one copy, check whether th
 | `GPT_CONFIG_124M` | `config.py`, `src/p04_gpt/architecture.py` (different values) |
 | Parameter count and size printout | `test.py`, `train_wikitext.py` |
 
-Issue 1 exists in both copies of the attention classes. Only the copy in `attention_modules.py` affects the model.
+Issue 1 was fixed in both copies of the attention classes. Only the copy in `attention_modules.py` affects the model.

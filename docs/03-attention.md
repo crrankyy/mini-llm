@@ -69,7 +69,7 @@ Forward pass, with shapes for the repo config (`D = 768`, `H = 12`, `head_dim = 
 | 2 | `W_key(x)`, `W_query(x)`, `W_value(x)` | `(B, T, 768)` each |
 | 3 | `.view(B, T, 12, 64)` then `.transpose(1, 2)` | `(B, 12, T, 64)` |
 | 4 | `queries @ keys.transpose(2, 3)` | `(B, 12, T, T)` |
-| 5 | `attention_scores.masked_fill(mask_bool, -torch.inf)` | result discarded, see below |
+| 5 | `attention_scores = attention_scores.masked_fill(mask_bool, -torch.inf)` | `(B, 12, T, T)`, later positions set to `-inf` |
 | 6 | `softmax(scores / 64 ** 0.5, dim=-1)`, then dropout | `(B, 12, T, T)` |
 | 7 | `weights @ values`, then `.transpose(1, 2)` | `(B, T, 12, 64)` |
 | 8 | `.contiguous().view(B, T, 768)` | `(B, T, 768)` |
@@ -77,18 +77,15 @@ Forward pass, with shapes for the repo config (`D = 768`, `H = 12`, `head_dim = 
 
 The mask is sliced to `[:T, :T]`, so sequences shorter than `context_length` work.
 
-## The mask is not applied
+## The causal mask
 
-Step 5 calls `masked_fill`, which returns a new tensor and leaves its input unchanged. The return value is not assigned, so the scores go into softmax unmasked. The in-place form is `masked_fill_`.
+Step 5 replaces every score above the diagonal with `-inf`, so softmax gives those positions a weight of zero and each token attends only to itself and the tokens before it. `masked_fill` returns a new tensor and leaves its input unchanged, which is why the result is assigned back.
 
-Verified two ways:
+Verified on 2026-10-11: in a small `GPTModel` in eval mode with dropout 0, changing the token at position `t` leaves the logits at every earlier position exactly unchanged, for every `t`.
 
-- Calling `masked_fill` on a tensor of zeros leaves the original all zeros and returns a separate tensor containing `-inf`.
-- In a small `GPTModel` in eval mode with dropout 0, changing only the **last** input token changes the logits at **every** earlier position (maximum absolute differences of 0.07 to 0.09 at positions 0 to 4). With a working causal mask those differences would be exactly zero.
+Until that date the return value was discarded and the mask had no effect. Weights trained before the fix need retraining. See [08-known-issues.md](08-known-issues.md#1-the-causal-mask-was-never-applied-fixed).
 
-The effect is that each position can attend to the tokens after it. During training, position `t` is asked to predict token `t + 1` and can read token `t + 1` directly. See [08-known-issues.md](08-known-issues.md#1-the-causal-mask-is-never-applied).
-
-`SelfAttention_v2` is not affected. It masks after softmax by multiplication and does apply it.
+`SelfAttention_v2` masks differently: after softmax, by multiplication.
 
 ## What carries over into checkpoints
 
