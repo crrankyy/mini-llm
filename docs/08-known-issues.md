@@ -162,19 +162,3 @@ Later stages copy earlier code forward. When changing one copy, check whether th
 | Parameter count and size printout | `test.py`, `train_wikitext.py` |
 
 Issue 1 exists in both copies of the attention classes. Only the copy in `attention_modules.py` affects the model.
-
-## Differences from `PROJECT_IMPLEMENTATION.md`
-
-That file at the repo root is an earlier write-up of the project. Where it and these pages disagree, these pages follow the code as checked on 2026-10-10.
-
-| It says | The code |
-|---|---|
-| `device.py` selects CUDA, MPS or CPU | chooses between `cuda` and `cpu` only, and is not imported |
-| `SimpleTokenizer` crashes on an unknown word during encoding | encoding returns `None`; decoding is what raises |
-| The causal mask sets future positions to negative infinity | the masked tensor is discarded (issue 1) |
-| The model is the 124M-parameter variant | 239,365,632 parameters (issue 5) |
-| Position embeddings are "sinusoidal/learned" | learned only |
-| The output head ties weights | the head has its own matrix |
-| Resume restores the total token count | `tokens_seen` is saved but not read back |
-| Resume is seamless | fails when the model was compiled (issue 2) |
-| Source links | absolute `file:///Users/...` paths that only resolve on one machine |

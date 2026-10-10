@@ -11,8 +11,6 @@ The repository declares no dependencies: there is no `pyproject.toml`, `requirem
 | `numpy` | `src/utils/dataloader.py`, `prepare_wikitext.py` |
 | `datasets`, `tqdm` | `prepare_wikitext.py` only |
 
-The notebook installs `tiktoken datasets numpy torch`. `tqdm` is not in that list; it arrives as a dependency of `datasets`.
-
 The checks in these docs ran in a throwaway environment that leaves the repo untouched:
 
 ```sh
@@ -77,8 +75,6 @@ python test.py                # CPU only
 Before running `test.py`, note what it does: it trains the full 239M-parameter model for 10 epochs on CPU and writes a checkpoint after each epoch, an estimated 29 GB in total. See [05-training.md](05-training.md#testpy).
 
 Before running `train_wikitext.py` or `test_inference.py`, check which `.pth` files are in the working directory. Both scripts choose files by name pattern; see [known issues 3 and 6](08-known-issues.md).
-
-On Colab the notebook runs the first two commands; see [05-training.md](05-training.md#colab-notebook).
 
 ## Devices
 

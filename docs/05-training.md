@@ -160,14 +160,3 @@ After the `try` block, in every case, the script saves `model.state_dict()` to `
 | `gpt_wikitext_checkpoint_ep{N}.pth` | read and written | resume; end of each epoch |
 | `gpt_wikitext_checkpoint_interrupted.pth` | written | on `Ctrl-C` |
 | `gpt_wikitext_124M.pth` | written | at exit |
-
-## Colab notebook
-
-`Colab_Training.ipynb` (untracked) has nine cells, five of them markdown:
-
-1. Mounts Google Drive and changes into `/content/drive/MyDrive/llm-from-scratch-v1`, the repo's former name. The path has to be edited to wherever the repo was uploaded.
-2. `!pip install tiktoken datasets numpy torch`
-3. `!python prepare_wikitext.py`
-4. `!python train_wikitext.py`
-
-It asks for a T4 GPU runtime. Because the working directory is on Drive, the checkpoints and final weights are written to Drive, while the training data is copied to Colab's local disk by step 2 of `train_wikitext.py`.

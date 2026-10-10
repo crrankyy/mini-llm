@@ -7,9 +7,9 @@ A GPT-style, decoder-only language model written from scratch in PyTorch. The re
 
 ## Snapshot
 
-These docs describe the code at commit `0bb727c` (2026-06-23) plus two files that are not tracked by git, `Colab_Training.ipynb` and `PROJECT_IMPLEMENTATION.md`. They were written on 2026-10-10.
+These docs describe the code at commit `0bb727c` (2026-06-23). They were written on 2026-10-10.
 
-Where a page says **verified**, the behaviour was checked by running the code on CPU with Python 3.10.20, torch 2.2.2, tiktoken 0.14.0 and numpy 1.26.4. The following were **not run**: `test.py`, `prepare_wikitext.py`, `train_wikitext.py` as a whole, the interactive loop in `test_inference.py`, the notebook, and anything on CUDA. Statements about those come from reading the code.
+Where a page says **verified**, the behaviour was checked by running the code on CPU with Python 3.10.20, torch 2.2.2, tiktoken 0.14.0 and numpy 1.26.4. The following were **not run**: `test.py`, `prepare_wikitext.py`, `train_wikitext.py` as a whole, the interactive loop in `test_inference.py`, and anything on CUDA. Statements about those come from reading the code.
 
 ## Three things to know before reading the rest
 
@@ -25,7 +25,7 @@ Where a page says **verified**, the behaviour was checked by running the code on
 | [02-data-pipeline.md](02-data-pipeline.md) | Sliding-window datasets, embedding demos, WikiText-103 preparation, the memory-mapped dataset |
 | [03-attention.md](03-attention.md) | The attention progression from dot products to `MultiHeadedAttention` |
 | [04-model.md](04-model.md) | `LayerNorm`, `GELU`, `FeedForward`, `TransformerBlock`, `GPTModel`, the config, the parameter budget |
-| [05-training.md](05-training.md) | Loss, evaluation, the training loop, `test.py`, `train_wikitext.py`, checkpoints, the Colab notebook |
+| [05-training.md](05-training.md) | Loss, evaluation, the training loop, `test.py`, `train_wikitext.py`, checkpoints |
 | [06-inference.md](06-inference.md) | Greedy and sampled generation, the interactive CLI |
 | [07-running.md](07-running.md) | Environment, the command for every script, and what each one writes to disk |
 | [08-known-issues.md](08-known-issues.md) | Defects, gaps and duplicated code, each with its location and how it was checked |
@@ -57,12 +57,9 @@ mini-llm/
 ├── train_wikitext.py          main training script (GPU, resume, torch.compile)
 ├── test.py                    smoke test + 10-epoch training on basic-data.txt (CPU)
 ├── test_inference.py          load weights, interactive generation
-├── Colab_Training.ipynb       untracked; runs prepare + train on a Colab T4
-├── PROJECT_IMPLEMENTATION.md  untracked; an earlier write-up (see known issues)
 ├── data/
 │   └── basic-data.txt         20,480-character short story used by the study scripts
 ├── docs/                      this folder
-├── graphify-out/              gitignored output of a code-graph tool
 └── src/
     ├── model.py               GPTModel
     ├── transformer.py         TransformerBlock
@@ -101,7 +98,6 @@ These are the files the entry points import, directly or indirectly.
 | `train_wikitext.py` | Trains on those files, with resume and checkpoints | [05](05-training.md#train_wikitextpy) |
 | `test.py` | Counts parameters, generates from the untrained model, trains on `basic-data.txt` | [05](05-training.md#testpy) |
 | `test_inference.py` | Loads weights and runs a prompt loop | [06](06-inference.md#test_inferencepy) |
-| `Colab_Training.ipynb` | Mounts Drive, installs packages, runs the first two scripts | [05](05-training.md#colab-notebook) |
 
 ### Study scripts
 
@@ -127,7 +123,6 @@ Standalone demos. None of them is imported by the model path.
 |---|---|
 | `device.py` | Selects `cuda` or `cpu` and prints it. Nothing imports it; each script picks its own device. |
 | `data/basic-data.txt` | 20,480 characters, 164 lines, plain ASCII. The file has no title; the text is recognizable as Edith Wharton's short story "The Verdict". |
-| `graphify-out/` | Generated graph report over 20 files, dated 2026-06-23, listed in `.gitignore`. Not used by the code. |
 | `.gitignore` | Ignores virtualenvs, bytecode, `.gemini/`, `GEMINI.md`, `graphify-out/`, editor folders, `.DS_Store`, `token.txt`. It does not ignore `*.pth` or `data/wikitext-103/`. |
 
 ## Conventions used in the code
