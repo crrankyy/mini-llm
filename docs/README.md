@@ -1,4 +1,4 @@
-# llm-from-scratch-v1: codebase documentation
+# mini-llm: codebase documentation
 
 A GPT-style, decoder-only language model written from scratch in PyTorch. The repository has two layers:
 
@@ -49,7 +49,7 @@ flowchart TD
 ## Repository map
 
 ```text
-llm-from-scratch-v1/
+mini-llm/
 ├── README.md                  project overview and quick start
 ├── config.py                  GPT_CONFIG_124M, the one model config
 ├── device.py                  prints cuda/cpu; not imported by anything

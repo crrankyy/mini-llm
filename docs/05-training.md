@@ -165,7 +165,7 @@ After the `try` block, in every case, the script saves `model.state_dict()` to `
 
 `Colab_Training.ipynb` (untracked) has nine cells, five of them markdown:
 
-1. Mounts Google Drive and changes into `/content/drive/MyDrive/llm-from-scratch-v1`. The path has to be edited to wherever the repo was uploaded.
+1. Mounts Google Drive and changes into `/content/drive/MyDrive/llm-from-scratch-v1`, the repo's former name. The path has to be edited to wherever the repo was uploaded.
 2. `!pip install tiktoken datasets numpy torch`
 3. `!python prepare_wikitext.py`
 4. `!python train_wikitext.py`

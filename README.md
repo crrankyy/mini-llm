@@ -1,4 +1,4 @@
-# llm-from-scratch-v1
+# mini-llm
 
 A GPT-style, decoder-only language model written from scratch in PyTorch.
 
