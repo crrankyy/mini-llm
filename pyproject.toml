@@ -16,8 +16,11 @@ dependencies = [
 [project.optional-dependencies]
 # needed by scripts/prepare_wikitext.py only
 data = [
-    "datasets",
+    # the floor keeps a resolver from falling back to releases that predate current pyarrow
+    "datasets>=3",
     "tqdm",
+    # pyarrow 26 needs NumPy 2, which the Intel-Mac torch pin above rules out
+    "pyarrow<26; sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 
 [build-system]
