@@ -10,9 +10,10 @@ from mini_llm.training.loss import calc_loss_loader
 from mini_llm.training.trainer import train_model_v1
 
 from mini_llm.config import GPT_CONFIG_124M
-    
+from mini_llm.device import get_device
 
-device = torch.device("cpu")
+
+device = get_device()
 print(f"")
 print(f"-" * 100)
 print(f"Using device: {device}")

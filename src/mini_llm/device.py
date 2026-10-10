@@ -1,10 +1,11 @@
 import torch
 
-# check if GPU is available
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"")
+def get_device():
+    if torch.cuda.is_available():
+        return torch.device("cuda")
 
-print(f"-" * 30)
-print(f"Using device: {device}")
-print(f"-" * 30)
+    # Metal, the only way to reach the GPU on a Mac
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
 
+    return torch.device("cpu")

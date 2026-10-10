@@ -7,6 +7,7 @@ import os
 
 from mini_llm.model.gpt import GPTModel
 from mini_llm.config import GPT_CONFIG_124M
+from mini_llm.device import get_device
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate text from trained weights at an interactive prompt.")
@@ -98,7 +99,7 @@ def generate_text(model, tokenizer, prompt, device, max_new_tokens=100, temperat
 def run_cli():
     args = parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = get_device()
     print(f"Using device: {device}")
     
     tokenizer = tiktoken.get_encoding("cl100k_base")

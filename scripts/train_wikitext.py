@@ -11,6 +11,7 @@ from mini_llm.training.loss import calc_loss_loader
 from mini_llm.training.trainer import train_model_v1
 
 from mini_llm.config import GPT_CONFIG_124M
+from mini_llm.device import get_device
 
 parser = argparse.ArgumentParser(description="Train the GPT model on WikiText-103.")
 parser.add_argument(
@@ -20,7 +21,7 @@ parser.add_argument(
 checkpoint_dir = parser.parse_args().checkpoint_dir
 
 # Use GPU if available
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = get_device()
 print(f"")
 print(f"-" * 100)
 print(f"Using device: {device}")
@@ -76,11 +77,13 @@ val_dataloader = create_memmap_dataloader(
 print("Train loader initialized. Number of batches:", len(train_dataloader))
 print("Val loader initialized. Number of batches:", len(val_dataloader))
 
-print("Compiling the model using PyTorch 2.0 (this takes a minute but speeds up training)...")
-try:
-    model = torch.compile(model)
-except Exception as e:
-    print(f"torch.compile not supported or failed: {e}. Running in eager mode.")
+# on MPS torch.compile returns without error and then fails at the first forward pass
+if device.type != "mps":
+    print("Compiling the model using PyTorch 2.0 (this takes a minute but speeds up training)...")
+    try:
+        model = torch.compile(model)
+    except Exception as e:
+        print(f"torch.compile not supported or failed: {e}. Running in eager mode.")
 
 optimizer = torch.optim.AdamW(
     model.parameters(),
