@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import src.p02_data_loading.dataloader as DataLoader
+import study.p02_data_loading.dataloader as DataLoader
 
 import tiktoken
 

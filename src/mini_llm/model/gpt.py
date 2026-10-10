@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 
-from src.p04_gpt.feedforward import LayerNorm
-from src.transformer import TransformerBlock
+from mini_llm.model.layers import LayerNorm
+from mini_llm.model.block import TransformerBlock
 
 class GPTModel(nn.Module):
 

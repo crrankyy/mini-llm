@@ -1,5 +1,5 @@
 import torch
-from src.utils.loss import calc_loss_loader
+from mini_llm.training.loss import calc_loss_loader
 
 def evaluate_model(model, train_loader, val_loader, device, eval_iter):
     model.eval() #1

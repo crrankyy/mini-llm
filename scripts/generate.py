@@ -3,8 +3,8 @@ import tiktoken
 import sys
 import os
 
-from src.model import GPTModel
-from config import GPT_CONFIG_124M
+from mini_llm.model.gpt import GPTModel
+from mini_llm.config import GPT_CONFIG_124M
 
 def load_model_weights(model, path, device):
     if not os.path.exists(path):

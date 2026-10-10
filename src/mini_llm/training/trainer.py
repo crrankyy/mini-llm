@@ -1,8 +1,8 @@
 import torch
 from datetime import datetime
-from src.utils.loss import calc_loss_batch
-from src.utils.evaluator import evaluate_model
-from src.utils.text2token import generate_and_print_sample
+from mini_llm.training.loss import calc_loss_batch
+from mini_llm.training.evaluate import evaluate_model
+from mini_llm.generation import generate_and_print_sample
 
 def train_model_v1(model, train_loader, val_loader,
                    optimizer, device, num_epochs,

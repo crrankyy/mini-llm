@@ -2,14 +2,14 @@ import torch
 import torch.nn as nn
 import tiktoken
 
-from src.p04_gpt.textgen import textgen_v1
-from src.model import GPTModel
-from src.utils.text2token import text_to_token_ids, token_ids_to_text
-from src.utils.dataloader import create_dataloader
-from src.utils.loss import calc_loss_loader
-from src.utils.trainer import train_model_v1
+from mini_llm.generation import textgen_v1
+from mini_llm.model.gpt import GPTModel
+from mini_llm.generation import text_to_token_ids, token_ids_to_text
+from mini_llm.data import create_dataloader
+from mini_llm.training.loss import calc_loss_loader
+from mini_llm.training.trainer import train_model_v1
 
-from config import GPT_CONFIG_124M
+from mini_llm.config import GPT_CONFIG_124M
     
 
 device = torch.device("cpu")
