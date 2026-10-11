@@ -8,6 +8,7 @@ import os
 from mini_llm.model.gpt import GPTModel
 from mini_llm.config import GPT_CONFIG_124M
 from mini_llm.device import get_device
+from mini_llm.generation import decode_token_ids
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate text from trained weights at an interactive prompt.")
@@ -94,7 +95,7 @@ def generate_text(model, tokenizer, prompt, device, max_new_tokens=100, temperat
             
     # Decode and return only the newly generated text
     generated_tokens = idx[0, len(encoded):].tolist()
-    return tokenizer.decode(generated_tokens)
+    return decode_token_ids(generated_tokens, tokenizer)
 
 def run_cli():
     args = parse_args()
