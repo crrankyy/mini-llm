@@ -9,8 +9,8 @@ Line numbers refer to the layout after the reorganization of 2026-10-11. Issues 
 | # | Issue | Location | Status |
 |---|---|---|---|
 | 1 | Causal mask was never applied | `src/mini_llm/model/attention.py:54` | fixed 2026-10-11 |
-| 2 | Resuming into a compiled model failed | `scripts/train_wikitext.py:120`, `:135` | fixed 2026-10-11 |
-| 3 | Interrupt checkpoint was never resumed (fixed); final weights saved regardless | `scripts/train_wikitext.py:152`, `:160` | first part fixed 2026-10-11; second open, verified |
+| 2 | Resuming into a compiled model failed | `scripts/train_wikitext.py:130`, `:145` | fixed 2026-10-11 |
+| 3 | Interrupt checkpoint was never resumed (fixed); final weights saved regardless | `scripts/train_wikitext.py:162`, `:170` | first part fixed 2026-10-11; second open, verified |
 | 4 | `architecture.py` could not be imported | `study/p04_gpt/architecture.py:5` | fixed 2026-10-11 |
 | 5 | Config name and vocabulary size do not match the model | `src/mini_llm/config.py:1-2` | open; verified |
 | 6 | `train_tiny.py` left checkpoints that the other scripts picked up | `scripts/train_tiny.py:148` | fixed 2026-10-11 |
@@ -19,7 +19,7 @@ Line numbers refer to the layout after the reorganization of 2026-10-11. Issues 
 | 9 | `SelfAttention_v2` builds its dropout inside `forward` | `study/p03_attention/self_attention.py:53` | open; verified |
 | 10 | Checkpoints are loaded with `weights_only=False` | `scripts/generate.py:42`, `src/mini_llm/training/checkpoint.py:45` | open; from reading |
 | 11 | Sampling an id the tokenizer cannot decode stopped the run | `src/mini_llm/generation.py:53` | fixed 2026-10-11 |
-| 12 | `train_wikitext.py` cannot start its DataLoader workers on macOS | `scripts/train_wikitext.py:75`, `:88`, `:98` | open; verified |
+| 12 | `train_wikitext.py` cannot start its DataLoader workers on macOS | `scripts/train_wikitext.py:85`, `:98`, `:108` | open; verified |
 
 Before a long training run, read [Across sessions](05-training.md#across-sessions), which lists what a run on Colab can still lose and what has not been checked there.
 
@@ -66,7 +66,7 @@ Before the fix this printed `tensor([0.0890, 0.0892, 0.0777, 0.0741, 0.0840, 1.2
 
 Fixed on 2026-10-11. `train_wikitext.py` used to compile the model before it looked for a checkpoint. By the time the checkpoint was loaded, `model` was the `OptimizedModule` wrapper, whose keys all start with `_orig_mod.`, while the resume code strips that prefix from the checkpoint. `load_state_dict` raised `RuntimeError: Error(s) in loading state_dict for OptimizedModule: Missing key(s) in state_dict: "_orig_mod.token_embedding.weight", ...`, so a run with a compiled model could not be continued by a later run.
 
-The script now loads the checkpoint into the plain model (line 120) and compiles afterwards (line 135). The prefix is still stripped, so checkpoints written by a compiled model load, including ones written before the fix.
+The script now loads the checkpoint into the plain model (line 130) and compiles afterwards (line 145). The prefix is still stripped, so checkpoints written by a compiled model load, including ones written before the fix.
 
 Verified on torch 2.2.2 on CPU, with a shrunken model and a real `OptimizedModule`: a run was killed in the middle of epoch 3, and the next run resumed from `ep2` with every weight tensor and the whole optimizer state equal to the checkpoint. Before the fix that second run stopped with the error above. The runs used `torch.compile`'s `eager` backend, because the code its default backend generates hangs on that machine. Not run on Colab or on CUDA.
 
@@ -74,7 +74,7 @@ Verified on torch 2.2.2 on CPU, with a shrunken model and a real `OptimizedModul
 
 **Fixed on 2026-10-11: the interrupt.** The `Ctrl-C` handler in `train_wikitext.py` used to write `gpt_wikitext_checkpoint_interrupted.pth` and print "Next time you run this, it will resume from here." The resume looked only for `gpt_wikitext_checkpoint_ep*.pth`, so the next run started the interrupted epoch over. The trainer now saves the position it has reached to the rolling checkpoint when it is interrupted, and the next run continues from that step (verified; see [05-training.md](05-training.md#verified-run)). The script no longer writes the `..._interrupted.pth` file, and neither it nor `generate.py` reads one left by an earlier version.
 
-**Still open: the final weights.** Lines 156 to 161 run after the `try` block whenever the script has not died from an error. `gpt_wikitext_124M.pth` is written after an interrupt, and also when the script found all epochs already complete (both verified). The file existing does not mean training finished. `generate.py` looks for this file first, so after an interrupted run it loads these weights even when a later run has trained further and then stopped without rewriting them. Passing `--weights` avoids the search.
+**Still open: the final weights.** Lines 166 to 171 run after the `try` block whenever the script has not died from an error. `gpt_wikitext_124M.pth` is written after an interrupt, and also when the script found all epochs already complete (both verified). The file existing does not mean training finished. `generate.py` looks for this file first, so after an interrupted run it loads these weights even when a later run has trained further and then stopped without rewriting them. Passing `--weights` avoids the search.
 
 ### 4. `study/p04_gpt/architecture.py` could not be imported (fixed)
 
@@ -159,13 +159,16 @@ Linux starts workers by forking, which does not re-run the script, so Colab is n
 | The newer rolling file is chosen by modification time | `src/mini_llm/training/checkpoint.py:31` | if the two times were ever out of order, a run would resume from the other file, one save earlier; not checked on a Drive mount |
 | `generate.py` does not fall back | `scripts/generate.py:31` | without `--weights` it takes the first file a resume would try and stops if that one cannot be read |
 | Deleted checkpoints stay in Drive's Trash | `src/mini_llm/training/checkpoint.py:111` | on a Drive mount `os.remove` moves the file to the Trash, where it uses space until the Trash is emptied (Colab's FAQ; not run) |
-| Whole split tokenized in memory | `scripts/prepare_wikitext.py:19-24` | all ids go into a Python list, then an array, before the `memmap` write |
-| No document separators | `scripts/prepare_wikitext.py:20-22` | articles are concatenated; no end-of-text token between them |
+| Whole split tokenized in memory | `scripts/prepare_wikitext.py:19-24` | all ids go into a Python list, then an array, before the `memmap` write. `prepare_fineweb.py` writes as it goes |
+| `prepare_fineweb.py` ends with `os._exit` | `scripts/prepare_fineweb.py:128` | without it the process hangs at exit after a stream was closed early, an Arrow bug; see [02-data-pipeline.md](02-data-pipeline.md#what-the-script-does) (verified with pyarrow 25.0.1) |
+| Only the start of each FineWeb file is used | `src/mini_llm/corpus.py:30` | every file gives the same amount, taken from its beginning; for FineWeb-Edu that is 3 or 4 crawls per file and at least 30 in all, not every crawl in the subset |
+| No document separators in the WikiText files | `scripts/prepare_wikitext.py:20-22` | articles are concatenated; no end-of-text token between them. `prepare_fineweb.py` does add one after every document |
+| Validation loss is measured on the same 160 windows every time | `scripts/train_wikitext.py:157` | `eval_iter=10` batches from a validation loader that is not shuffled: the first 40,960 tokens of `validation.bin` and nothing else; from reading |
 | Last window dropped | `src/mini_llm/data.py:37` | `MemMapDataset` can omit one valid final window (verified) |
 | Context size read from the global config | `scripts/generate.py:56` | `generate_text` ignores the size of the model it is given |
 | Optimizer state loaded for inference | `scripts/generate.py:42` | given a full checkpoint, `map_location=device` moves the AdamW state to the device before it is dropped |
 | Unused imports and variables | the three scripts that build a model | `train_tiny.py`: `nn`, `batch`. `train_wikitext.py`: `nn`, `textgen_v1`, `text_to_token_ids`, `token_ids_to_text`, `calc_loss_loader`. `generate.py`: `sys` |
-| Three test files | `tests/` | the causal mask, the decoding of sampled ids, and checkpointing with resume; the loss, evaluation, the in-memory loader and data preparation have no tests |
+| Four test files | `tests/` | the causal mask, the decoding of sampled ids, checkpointing with resume, and the preparation of the FineWeb mix; the loss, evaluation, the in-memory loader and the WikiText preparation have no tests |
 
 Four earlier rows were resolved on 2026-10-11 by the rolling checkpoint: a checkpoint was written only at the end of an epoch, a checkpoint that was cut off stopped the next run, the loaded checkpoint stayed in memory for the whole run, and the step counters restarted on every resume.
 

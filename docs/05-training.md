@@ -156,12 +156,17 @@ It leaves ten `gpt_wikitext_checkpoint_ep*.pth` files in `checkpoints/tiny`, abo
 `scripts/train_wikitext.py` is a module-level script. It was run end to end only as described under [Verified run](#verified-run): not at full size, not on CUDA, and with `torch.compile` only through its `eager` backend. On macOS it cannot run as written; see [known issue 12](08-known-issues.md#12-train_wikitextpy-cannot-start-its-dataloader-workers-on-macos).
 
 ```sh
-uv run python scripts/train_wikitext.py                          # checkpoints/ under the working directory
-uv run python scripts/train_wikitext.py --checkpoint-dir DIR     # for example a folder on Google Drive
+uv run python scripts/train_wikitext.py                                          # WikiText-103, five epochs
+uv run python scripts/train_wikitext.py --data-dir data/fineweb-mix --epochs 1   # the FineWeb mix, one pass
+uv run python scripts/train_wikitext.py --checkpoint-dir DIR                     # for example a folder on Google Drive
 ```
+
+The script keeps its name, but it trains on whatever folder `--data-dir` names, as long as it holds a `train.bin` and a `validation.bin` in the format the prepare scripts write (see [02-data-pipeline.md](02-data-pipeline.md)).
 
 | Option | Default | Effect |
 |---|---|---|
+| `--data-dir DIR` | `data/wikitext-103` | folder with `train.bin` and `validation.bin` |
+| `--epochs N` | 5 | passes over the training data in total, counting those earlier runs completed |
 | `--checkpoint-dir DIR` | `checkpoints` | where checkpoints and final weights are written, and where a resume looks |
 | `--save-every N` | 2000 | training steps between saves of the rolling checkpoint |
 | `--keep-checkpoints N` | 10 | end-of-epoch checkpoints to keep; older ones are deleted |
@@ -170,7 +175,7 @@ In order, it:
 
 1. Reads its options.
 2. Picks the device with `get_device()`. Seeds with 123, builds the model, moves it to the device, prints its size.
-3. Sets `data_dir = "data/wikitext-103"`. If `/content` exists, which is how it detects Colab, it copies that folder to `/content/data/wikitext-103` once and reads from there.
+3. Takes the data folder from `--data-dir`. If that folder is on Google Drive, meaning its real path starts with `/content/drive/`, it copies the folder to `/content/data/<folder name>` once and reads from there. A folder that is already on the Colab machine's own disk is read where it is.
 4. Builds three memory-mapped loaders and prints the batch counts of the first and the last: the training loader with `seed=123`, a shuffled loader over the same file for evaluation's training batches, and the validation loader.
 5. Builds `AdamW(lr=5e-4, weight_decay=0.1)`.
 6. Looks in the checkpoint folder for a checkpoint to resume from, and loads it.
@@ -187,11 +192,18 @@ Compilation is skipped on MPS because there `torch.compile` returns without erro
 | `num_workers` | 2 |
 | Training order | reshuffled every epoch from `seed=123` plus the epoch number |
 | Optimizer | `AdamW(lr=5e-4, weight_decay=0.1)` |
-| Epochs (`num_epochs`) | 5 in total, across resumes |
+| Epochs (`num_epochs`) | `--epochs`, 5 by default, in total across resumes |
 | `eval_frq` / `eval_iter` | 500 / 10 |
 | Sample prompt | "The secret to training large models is" |
 
-With the real `train.bin` of 120,196,189 tokens, the training loader has 29,344 batches per epoch and the validation loader 62 (verified by building both loaders). Five epochs are 146,720 steps, about 601 million tokens.
+Batches per epoch, verified by building the loaders on the real files:
+
+| Data | Training tokens | Training batches per epoch | Validation batches |
+|---|---|---|---|
+| `data/fineweb-mix` | 1,000,075,641 | 244,159 | 256 |
+| `data/wikitext-103` | 120,196,189 | 29,344 | 62 |
+
+One pass over the FineWeb mix is therefore about 1.7 times the steps of five WikiText-103 epochs (146,720).
 
 ### Resume
 
@@ -227,8 +239,8 @@ After the `try` block the script saves `model.state_dict()` to `gpt_wikitext_124
 
 | Path | Direction | When |
 |---|---|---|
-| `data/wikitext-103/train.bin`, `validation.bin` | read | always |
-| `/content/data/wikitext-103/` | written | on Colab, first run |
+| `<data dir>/train.bin`, `validation.bin` | read | always |
+| `/content/data/<folder name>/` | written | on Colab, first run, when the data folder is on Google Drive |
 | `<checkpoint dir>/gpt_wikitext_checkpoint_latest_a.pth`, `..._latest_b.pth` | read and written | resume; every `--save-every` steps, at the end of each epoch, on `Ctrl-C` |
 | `<checkpoint dir>/gpt_wikitext_checkpoint_ep{N}.pth` | read, written and deleted | resume when no rolling file can be read; end of each epoch; once more than `--keep-checkpoints` exist |
 | `<checkpoint dir>/gpt_wikitext_124M.pth` | written | at exit |
@@ -239,13 +251,13 @@ After the `try` block the script saves `model.state_dict()` to `gpt_wikitext_124
 
 | Step | What the cell does |
 |---|---|
-| Settings and helpers | Defines the paths, `SAVE_EVERY` (2000), `KEEP_CHECKPOINTS` (10) and the helper functions. Safe to re-run at any time; it starts nothing. |
+| Settings and helpers | Defines the paths, the data settings `DATA_DIR`, `TRAIN_TOKENS` (1,000,000,000), `EDU_SHARE` (0.5) and `EPOCHS` (1), the checkpoint settings `SAVE_EVERY` (2000) and `KEEP_CHECKPOINTS` (10), and the helper functions. Safe to re-run at any time; it starts nothing. |
 | 1. Check the GPU | Stops if the kernel has no CUDA device. |
 | 2. Mount Google Drive | Mounts Drive at `/content/drive` and stops if the mount is missing, since the checkpoints would otherwise go to the temporary disk. |
 | 3. Get the code | Clones the private repo into `/content/mini-llm` with a GitHub token typed at a prompt. The token is passed to git through the environment and is not stored. |
 | 4. Install | `pip install -e` of the clone with the `data` extra. |
-| 5. Prepare the data | Runs `prepare_wikitext.py` unless the token files already exist. |
-| 6. Start training | Starts `train_wikitext.py` with `--checkpoint-dir <Drive folder>`, `--save-every` and `--keep-checkpoints` as a detached background process, with its output appended to a log file on Drive. Does nothing if training is already running. |
+| 5. Prepare the data | Runs `prepare_fineweb.py` with `TRAIN_TOKENS` and `EDU_SHARE`. The script does nothing when the folder already holds data prepared with those settings. |
+| 6. Start training | Starts `train_wikitext.py` with `--checkpoint-dir <Drive folder>`, `--data-dir`, `--epochs`, `--save-every` and `--keep-checkpoints` as a detached background process, with its output appended to a log file on Drive. Does nothing if training is already running. |
 | 7. Watch progress | Parses the evaluation lines out of the log and plots train and validation loss; a second cell shows the end of the log and the checkpoint folder. |
 | 8. Stop training | The first cell sends the interrupt that `Ctrl-C` would send, on which the trainer saves its position. The second, run once training has stopped, calls `drive.flush_and_unmount()`, which returns when everything written to Drive has been uploaded. |
 
@@ -254,7 +266,7 @@ Where things live during a Colab run:
 | What | Where | Kept after the session |
 |---|---|---|
 | The clone, the installed package | `/content/mini-llm` | no |
-| `train.bin`, `validation.bin` | `/content/mini-llm/data/wikitext-103/`, copied to `/content/data/wikitext-103/` | no; rebuilt by step 5 |
+| `train.bin`, `validation.bin`, `manifest.json` | `/content/mini-llm/data/fineweb-mix/` | no; rebuilt by step 5 in every session, from the same pinned version of the data |
 | Checkpoints and final weights | `mini-llm/checkpoints/` on Google Drive | yes |
 | The training log | `mini-llm/train.log` on Google Drive | yes |
 
@@ -266,7 +278,7 @@ Verified locally: the clone cell against the real repository with a valid and an
 
 A new session resumes from the newer rolling checkpoint on Drive, at the step it was saved at, and continues the interrupted epoch in the same order.
 
-- **What a session can lose.** When the machine is taken away, the steps since the last rolling save: at most `SAVE_EVERY`, 2,000 by default, which is 6.8% of an epoch. When training is stopped with the stop cell, nothing, provided the flush cell is run before disconnecting.
+- **What a session can lose.** When the machine is taken away, the steps since the last rolling save: at most `SAVE_EVERY`, 2,000 by default. One pass over the FineWeb mix is 244,159 steps. When training is stopped with the stop cell, nothing, provided the flush cell is run before disconnecting.
 - **Space on Drive.** With the defaults a five-epoch run ends with five end-of-epoch checkpoints, two rolling files and the final weights, about 21 GB. `KEEP_CHECKPOINTS = 2` brings that to about 12.5 GB. A checkpoint the script deletes goes to Drive's Trash, where it keeps using space until the Trash is emptied (Colab's FAQ).
 - **Saves are uploaded in the background.** A save that has not finished uploading when the machine disappears is lost, and the next session resumes from the other rolling file, one save earlier.
 
