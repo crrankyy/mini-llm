@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import tiktoken
 
-from sfeedforward import LayerNorm, GELU, FeedForward
-from src.transformer import TransformerBlock
+from mini_llm.model.layers import LayerNorm, GELU, FeedForward
+from mini_llm.model.block import TransformerBlock
 
 GPT_CONFIG_124M = {
     "vocab_size": 100277, 

@@ -1,7 +1,7 @@
 import torch.nn as nn
 
-from src.p03_attention.attention_modules import MultiHeadedAttention
-from src.p04_gpt.feedforward import LayerNorm, FeedForward
+from mini_llm.model.attention import MultiHeadedAttention
+from mini_llm.model.layers import LayerNorm, FeedForward
     
 
 class TransformerBlock(nn.Module):

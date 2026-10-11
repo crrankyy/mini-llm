@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Sampler
 import tiktoken
 
 class CustomDataset(Dataset):
@@ -46,7 +46,31 @@ class MemMapDataset(Dataset):
         y = torch.tensor(chunk[1:], dtype=torch.long)
         return x, y
 
-def create_memmap_dataloader(bin_file_path, batch_size=4, max_length=256, stride=128, shuffle=True, drop_last=True, num_workers=0):
+class ResumableSampler(Sampler):
+    def __init__(self, num_samples, seed):
+        self.num_samples = num_samples
+        self.seed = seed
+        self.epoch = 0
+        self.start = 0
+
+    def set_position(self, epoch, start):
+        self.epoch = epoch
+        self.start = start
+
+    def __iter__(self):
+        # the order depends only on the seed and the epoch, so a later run can
+        # rebuild it and carry on from the sample where an earlier run stopped
+        generator = torch.Generator().manual_seed(self.seed + self.epoch)
+        order = torch.randperm(self.num_samples, generator=generator)
+        return iter(order[self.start:].tolist())
+
+    def __len__(self):
+        return max(self.num_samples - self.start, 0)
+
+def create_memmap_dataloader(bin_file_path, batch_size=4, max_length=256, stride=128, shuffle=True, drop_last=True, num_workers=0, seed=None):
     dataset = MemMapDataset(bin_file_path, max_length, stride)
+    if seed is not None:
+        sampler = ResumableSampler(len(dataset), seed)
+        return DataLoader(dataset, batch_size=batch_size, sampler=sampler, drop_last=drop_last, num_workers=num_workers)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last, num_workers=num_workers)
     return dataloader

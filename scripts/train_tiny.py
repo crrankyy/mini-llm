@@ -2,17 +2,18 @@ import torch
 import torch.nn as nn
 import tiktoken
 
-from src.p04_gpt.textgen import textgen_v1
-from src.model import GPTModel
-from src.utils.text2token import text_to_token_ids, token_ids_to_text
-from src.utils.dataloader import create_dataloader
-from src.utils.loss import calc_loss_loader
-from src.utils.trainer import train_model_v1
+from mini_llm.generation import textgen_v1
+from mini_llm.model.gpt import GPTModel
+from mini_llm.generation import text_to_token_ids, token_ids_to_text
+from mini_llm.data import create_dataloader
+from mini_llm.training.loss import calc_loss_loader
+from mini_llm.training.trainer import train_model_v1
 
-from config import GPT_CONFIG_124M
-    
+from mini_llm.config import GPT_CONFIG_124M
+from mini_llm.device import get_device
 
-device = torch.device("cpu")
+
+device = get_device()
 print(f"")
 print(f"-" * 100)
 print(f"Using device: {device}")
@@ -143,5 +144,6 @@ num_epochs = 10
 train_losses, val_losses, tokens_seen = train_model_v1(
     model, train_dataloader, val_dataloader, optimizer, device,
     num_epochs=num_epochs, eval_frq=5, eval_iter=5,
-    start_context="Every effort moves you", tokenizer=tokenizer
+    start_context="Every effort moves you", tokenizer=tokenizer,
+    checkpoint_dir="checkpoints/tiny"
 )

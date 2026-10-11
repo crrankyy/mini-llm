@@ -50,11 +50,24 @@ def text_to_token_ids(text, tokenizer):
     
     return encoded_tensor
 
+def decode_token_ids(token_ids, tokenizer):
+
+    pieces = []
+    for token_id in token_ids:
+        try:
+            pieces.append(tokenizer.decode_single_token_bytes(token_id))
+        except KeyError:
+            # the model has more output ids than the tokenizer has tokens;
+            # an id without a token is shown as its number
+            pieces.append(f"<|{token_id}|>".encode())
+
+    return b"".join(pieces).decode("utf-8", errors="replace")
+
 def token_ids_to_text(token_ids, tokenizer):
     
     flat = token_ids.squeeze(0) 
     
-    return tokenizer.decode(flat.tolist())
+    return decode_token_ids(flat.tolist(), tokenizer)
 
 def generate_and_print_sample(model, tokenizer, device, start_context):
     

@@ -1,6 +1,6 @@
 # 01: Tokenization
 
-Stage 1 lives in `src/p01_tokenization/`. It builds a word-level tokenizer by hand, then switches to a byte-pair-encoding tokenizer from `tiktoken`. Only the `tiktoken` tokenizer is used by the rest of the repository.
+Stage 1 lives in `study/p01_tokenization/`. It builds a word-level tokenizer by hand, then switches to a byte-pair-encoding tokenizer from `tiktoken`. Only the `tiktoken` tokenizer is used by the rest of the repository.
 
 ## The regex tokenizer
 
@@ -84,8 +84,11 @@ Verified with tiktoken 0.14.0:
 | Highest token id | 100,276 |
 | `<\|endoftext\|>` id | 100,257 |
 | Tokens in `basic-data.txt` | 4,944 (versus 4,690 regex tokens) |
+| Ids below `n_vocab` that cannot be decoded | 16: 100,256 and 100,261 to 100,275 |
 
 The model config uses `vocab_size = 100352`, which is 75 more than `n_vocab`. See [04-model.md](04-model.md#the-config).
+
+`tokenizer.decode` raises `KeyError` for any of those 16 ids and for the 75 above `n_vocab`. The model can sample all 91. `decode_token_ids` in `src/mini_llm/generation.py` writes such an id as its number where `tokenizer.decode` would raise; see [known issue 11](08-known-issues.md#11-sampling-an-id-the-tokenizer-cannot-decode-stopped-the-run-fixed).
 
 ## How special tokens are handled across the repo
 
@@ -95,6 +98,6 @@ The call sites do not agree on `allowed_special`:
 |---|---|---|
 | `CustomDataset` (`tokenizer.encode(txt)`) | none | tiktoken raises `ValueError` |
 | `text_to_token_ids` | `{'<\|endoftext\|>'}` | encoded as id 100,257 |
-| `prepare_wikitext.py`, `test_inference.py` | `"all"` | any special-token string in the text becomes its special id |
+| `prepare_wikitext.py`, `generate.py` | `"all"` | any special-token string in the text becomes its special id |
 
 Verified with tiktoken 0.14.0. The first row means `create_dataloader` fails on any text that contains a special-token string.

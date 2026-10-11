@@ -1,10 +1,38 @@
+import argparse
 import torch
 import tiktoken
 import sys
 import os
 
-from src.model import GPTModel
-from config import GPT_CONFIG_124M
+from mini_llm.model.gpt import GPTModel
+from mini_llm.config import GPT_CONFIG_124M
+from mini_llm.device import get_device
+from mini_llm.generation import decode_token_ids
+from mini_llm.training.checkpoint import resume_candidates
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Generate text from trained weights at an interactive prompt.")
+    parser.add_argument(
+        "--weights", default=None,
+        help="weights or checkpoint file to load; skips the search in --checkpoint-dir"
+    )
+    parser.add_argument(
+        "--checkpoint-dir", default="checkpoints",
+        help="where to look for the final weights or, failing that, the latest checkpoint"
+    )
+    return parser.parse_args()
+
+def find_weights(checkpoint_dir):
+    final_path = os.path.join(checkpoint_dir, "gpt_wikitext_124M.pth")
+    if os.path.exists(final_path):
+        return final_path
+
+    # Fallback to check if they have a checkpoint: the one a training run would resume from
+    checkpoints = resume_candidates(checkpoint_dir)
+    if checkpoints:
+        return checkpoints[0]
+
+    return final_path
 
 def load_model_weights(model, path, device):
     if not os.path.exists(path):
@@ -67,10 +95,12 @@ def generate_text(model, tokenizer, prompt, device, max_new_tokens=100, temperat
             
     # Decode and return only the newly generated text
     generated_tokens = idx[0, len(encoded):].tolist()
-    return tokenizer.decode(generated_tokens)
+    return decode_token_ids(generated_tokens, tokenizer)
 
 def run_cli():
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    args = parse_args()
+
+    device = get_device()
     print(f"Using device: {device}")
     
     tokenizer = tiktoken.get_encoding("cl100k_base")
@@ -79,19 +109,13 @@ def run_cli():
     model = GPTModel(GPT_CONFIG_124M)
     
     # Load weights
-    weight_path = "gpt_wikitext_124M.pth"
-    if not os.path.exists(weight_path):
-        # Fallback to check if they have a checkpoint
-        import glob
-        checkpoints = sorted(glob.glob("gpt_wikitext_checkpoint_*.pth"))
-        if checkpoints:
-            weight_path = checkpoints[-1]
-            
+    weight_path = args.weights or find_weights(args.checkpoint_dir)
+
     try:
         model = load_model_weights(model, weight_path, device)
     except FileNotFoundError as e:
         print(f"Error: {e}")
-        print("Please make sure you have trained the model or put the checkpoint in this folder.")
+        print(f"Put the weights or a checkpoint in '{args.checkpoint_dir}', or pass a file with --weights.")
         return
         
     model.to(device)
