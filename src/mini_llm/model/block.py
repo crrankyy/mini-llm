@@ -12,7 +12,6 @@ class TransformerBlock(nn.Module):
         self.attention = MultiHeadedAttention(
             d_in = config["embedding_dimension"],
             d_out = config["embedding_dimension"],
-            context_length = config["context_length"],
             num_heads = config["n_heads"],
             dropout = config["drop_rate"],
             qkvbias = config["qkv_bias"]

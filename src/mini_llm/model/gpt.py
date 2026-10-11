@@ -29,6 +29,20 @@ class GPTModel(nn.Module):
         self.out_head = nn.Linear(
                 config["embedding_dimension"], config["vocab_size"], bias = False
         )
+        # tied: the matrix that turns a token id into a vector also scores every
+        # token against the final vector, so the model stores it once
+        self.out_head.weight = self.token_embedding.weight
+
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        # PyTorch draws an embedding at std 1. Read back through the tied output layer,
+        # weights that large give a first loss in the hundreds, where a uniform guess
+        # over the vocabulary would score ln(vocab_size)
+        if isinstance(module, (nn.Linear, nn.Embedding)):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        if isinstance(module, nn.Linear) and module.bias is not None:
+            nn.init.zeros_(module.bias)
 
     def forward(self, in_idx):
         batch_size, seq_len = in_idx.shape

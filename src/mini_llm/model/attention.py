@@ -1,9 +1,9 @@
-import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class MultiHeadedAttention(nn.Module):
-    def __init__(self, d_in, d_out, context_length, dropout, num_heads, qkvbias=False):
+    def __init__(self, d_in, d_out, dropout, num_heads, qkvbias=False):
         super().__init__()
 
         assert d_out % num_heads == 0, "d_out must be divisible by num_heads"
@@ -18,12 +18,7 @@ class MultiHeadedAttention(nn.Module):
         self.W_value = nn.Linear(d_in, d_out, bias=qkvbias)
 
         self.out_proj = nn.Linear(d_out, d_out)
-        self.dropout = nn.Dropout(dropout)
-
-        self.register_buffer(
-            "mask", 
-            torch.triu(torch.ones(context_length, context_length), diagonal=1)
-        )
+        self.dropout = dropout
 
     def forward(self, x):
         batch_size, num_tokens, d_in = x.size()
@@ -47,19 +42,12 @@ class MultiHeadedAttention(nn.Module):
         queries = queries.transpose(1, 2)
         values = values.transpose(1, 2)
 
-        attention_scores = torch.matmul(queries, keys.transpose(2, 3))
-
-        mask_bool = self.mask.bool()[:num_tokens, :num_tokens]
-
-        attention_scores = attention_scores.masked_fill(mask_bool, -torch.inf)
-
-        attention_weights = torch.softmax(
-            attention_scores/keys.shape[-1]**0.5, dim=-1
-        )
-
-        attention_weights = self.dropout(attention_weights)
-
-        context_vectors = (torch.matmul(attention_weights, values)).transpose(1, 2)
+        # scores, causal mask, softmax, dropout and the weighted sum of the values, all in
+        # PyTorch's own function. study/p03_attention/self_attention.py has the steps written out
+        context_vectors = F.scaled_dot_product_attention(
+            queries, keys, values, is_causal=True,
+            dropout_p=self.dropout if self.training else 0.0
+        ).transpose(1, 2)
 
         context_vectors = context_vectors.contiguous().view(
             batch_size, num_tokens, self.d_out
