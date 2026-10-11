@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# needed by scripts/prepare_wikitext.py only
+# needed only by the scripts that prepare data
 data = [
     # the floor keeps a resolver from falling back to releases that predate current pyarrow
     "datasets>=3",

@@ -20,6 +20,7 @@ graphify-out/
 checkpoints/
 *.pth
 data/wikitext-103/
+data/fineweb-mix/
 
 # IDEs & Editor Configuration
 .vscode/
