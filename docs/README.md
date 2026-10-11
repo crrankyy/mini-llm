@@ -17,14 +17,15 @@ What was run, and how:
 - **`train_tiny.py`, `train_wikitext.py`, `generate.py`**: end to end, on CPU and on MPS, with the model config shrunk to one 8-dimensional layer so a run takes seconds. For `train_wikitext.py` the DataLoader workers were also switched off, because the script cannot start them on macOS (see [08-known-issues.md](08-known-issues.md)).
 - **`train_wikitext.py` with a compiled model**: on CPU with the shrunken config and `torch.compile`'s `eager` backend, as five runs sharing one checkpoint folder: one killed inside an epoch, one interrupted, one killed in the middle of a save, one run to the end, and one that found nothing left to do.
 - **`generate.py` at full size**: on MPS, from a 1.95 GB checkpoint with random weights.
+- **`train_tiny.py` at full size**: on MPS, with the checkpoint writes switched off, since it would write 19.5 GB.
 - **`prepare_wikitext.py`**: with the download replaced by a few lines of text, and once with the real download.
 - **`prepare_fineweb.py`**: for real, at its default size of 1 billion tokens.
 
-The following were **not run**: training at full size, anything on CUDA, `torch.compile` with its default backend, and the cells of `train_colab.ipynb` that need Colab. Statements about those come from reading the code.
+On 2026-10-11 the notebook trained the model as it then was, with a 256-token context, on a Colab T4 for 16,511 steps; see [05-training.md](05-training.md#the-colab-run-of-2026-10-11). The model and the training settings as they are now have **not been run** on CUDA or at full size beyond single steps. Statements about that come from reading the code.
 
 ## Two things to know before reading the rest
 
-1. **The model has 162,295,296 parameters, not 124M.** The config keeps the name `GPT_CONFIG_124M`, but the vocabulary is twice GPT-2's. Verified. See [04-model.md](04-model.md#parameter-budget).
+1. **The model has 162,885,120 parameters, not 124M.** The config keeps the name `GPT_CONFIG_124M`, but the vocabulary is twice GPT-2's. Verified. See [04-model.md](04-model.md#parameter-budget).
 2. **Run things from the repo root.** Imports work from anywhere once the package is installed, but paths such as `data/basic-data.txt`, `data/wikitext-103/` and `checkpoints/` are relative to the working directory. See [07-running.md](07-running.md).
 
 ## Pages
@@ -46,7 +47,7 @@ The following were **not run**: training at full size, anything on CUDA, `torch.
 flowchart TD
     A[scripts/prepare_fineweb.py] -->|uint32 token streams| B["data/fineweb-mix/train.bin<br/>data/fineweb-mix/validation.bin"]
     B --> C[scripts/train_wikitext.py]
-    C -->|MemMapDataset, batch 16 x 256 tokens| D[GPTModel]
+    C -->|MemMapDataset, batch 4 x 1024 tokens| D[GPTModel]
     D -->|train_model_v1| E["checkpoints/gpt_wikitext_checkpoint_ep{N}.pth<br/>one per epoch"]
     C -->|at exit| F[checkpoints/gpt_wikitext_124M.pth]
     E --> G[scripts/generate.py]
@@ -82,6 +83,7 @@ mini-llm/
 │           ├── evaluate.py    train and validation loss
 │           ├── checkpoint.py  checkpoint files: rolling saves, resume, pruning
 │           ├── schedule.py    the learning rate for each weight update
+│           ├── optimizer.py   AdamW, with weight decay on the matrices only
 │           └── trainer.py     the training loop
 ├── scripts/
 │   ├── prepare_fineweb.py     download + tokenize the FineWeb mix into .bin files
@@ -98,7 +100,10 @@ mini-llm/
 │   ├── test_causal_mask.py    a position must not see later tokens
 │   ├── test_checkpoint.py     a stopped run resumes and ends with the same weights
 │   ├── test_corpus.py         the prepared token files hold what they should
-│   └── test_generation.py     sampled ids without a token still decode
+│   ├── test_generation.py     sampled ids without a token still decode
+│   ├── test_model.py          the layers match their formulas; the output head is tied
+│   ├── test_optimizer.py      which parameters are decayed, and the betas
+│   └── test_schedule.py       the learning rate rises, then falls along a cosine
 ├── data/
 │   └── basic-data.txt         20,480-character short story used by the study scripts
 └── docs/                      this folder
@@ -126,6 +131,7 @@ Paths are relative to `src/mini_llm/`. Imports are absolute, for example `from m
 | `training/evaluate.py` | `evaluate_model` | `training/trainer.py` |
 | `training/checkpoint.py` | `load_latest_checkpoint`, `resume_candidates`, `training_progress`, `checkpoint_state`, `rolling_write_order`, `save_rolling_checkpoint`, `prune_epoch_checkpoints`, and the helpers that build the file paths | `training/trainer.py`, `train_wikitext.py`, `generate.py` |
 | `training/schedule.py` | `learning_rate_at` | `train_wikitext.py` |
+| `training/optimizer.py` | `create_optimizer` | `train_wikitext.py`, the tests |
 | `training/trainer.py` | `train_model_v1` | `train_tiny.py`, `train_wikitext.py` |
 | `generation.py` | `textgen_v1`, `textgen_v2`, `text_to_token_ids`, `decode_token_ids`, `token_ids_to_text`, `generate_and_print_sample` | `training/trainer.py`, `train_tiny.py`, `generate.py` |
 
@@ -190,8 +196,8 @@ Standalone demos. The library does not import any of them.
 
 | Symbol | Meaning | Value in `GPT_CONFIG_124M` |
 |---|---|---|
-| `B` | batch size | 2 in `train_tiny.py`, 16 in `train_wikitext.py` |
-| `T` | tokens in the sequence | up to 256 |
+| `B` | batch size | 2 in `train_tiny.py`, 4 in `train_wikitext.py` |
+| `T` | tokens in the sequence | up to 1,024; 256 in `train_tiny.py` |
 | `D` | `embedding_dimension` | 768 |
 | `H` | `n_heads` | 12 |
 | `V` | `vocab_size` | 100,352 |

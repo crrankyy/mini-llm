@@ -110,6 +110,6 @@ The library version gets the same mask by passing `is_causal=True`, and the chec
 
 ## What carries over into checkpoints
 
-The library version registers no buffer, so a checkpoint holds nothing of the mask, and a saved model is tied to its `context_length` only through the positional embedding table.
+The library version registers no buffer, so a checkpoint holds nothing of the mask, and a saved model is tied to its `context_length` only through the positional embedding table. That table is why a file written while the context was 256 tokens, before 2026-10-12, no longer loads: `size mismatch for position_embedding.weight` (verified).
 
 Until 2026-10-11 each of the 12 blocks stored a `256 x 256` mask in the state dict. `load_state_dict` refuses a checkpoint from then because of those entries (verified). The class in `self_attention.py` still registers its mask.

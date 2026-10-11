@@ -32,14 +32,14 @@ Checkpoints and weights are written to `checkpoints/`, which is not in git.
 |---|---|
 | Tokenizer | `tiktoken`, `cl100k_base` |
 | Vocabulary size | 100,352 |
-| Context length | 256 tokens |
+| Context length | 1,024 tokens |
 | Embedding dimension | 768 |
 | Attention heads / layers | 12 / 12 |
 | Dropout | 0 |
 | Output head | shares the token embedding's matrix |
-| Parameters | 162,295,296 (619 MB as float32) |
+| Parameters | 162,885,120 (621 MB as float32) |
 
-The config is named `GPT_CONFIG_124M` after GPT-2 small, but the larger vocabulary brings the model to 162M parameters. See [docs/04-model.md](docs/04-model.md#parameter-budget).
+The config is named `GPT_CONFIG_124M` after GPT-2 small, but the larger vocabulary brings the model to 163M parameters. See [docs/04-model.md](docs/04-model.md#parameter-budget).
 
 ## Setup
 
@@ -68,10 +68,10 @@ uv run pytest
 - **Device.** The scripts use CUDA if it is available, then Apple's Metal backend (MPS), then the CPU.
 - **Data.** `prepare_fineweb.py --tokens N` prepares a different amount and `--edu-share X` a different mix. Without `--data-dir`, `train_wikitext.py` reads `data/wikitext-103`, which `prepare_wikitext.py` writes.
 - **Checkpoints.** `train_wikitext.py --checkpoint-dir DIR` writes somewhere other than `checkpoints/`; `--save-every N` and `--keep-checkpoints N` set how often the rolling checkpoint is saved and how many per-epoch checkpoints are kept. A run that stops, for any reason, is continued by running the script again. `generate.py --weights FILE` loads one specific file.
-- **Training settings.** One weight update is made from 16 batches, and the learning rate rises to 6e-4 over the first 3% of updates and then falls along a cosine. `--accumulate N`, `--lr X` and `--warmup-share X` change these. Keep them, and `--epochs`, the same for the whole of a run.
+- **Training settings.** A batch is 4 windows of 1,024 tokens, and one weight update is made from 16 batches. The learning rate rises to 6e-4 over the first 3% of updates and then falls along a cosine. `--batch-size N`, `--accumulate N`, `--lr X` and `--warmup-share X` change these. Keep them, and `--epochs`, the same for the whole of a run; a run is not resumed with a different `--batch-size`.
 - **Colab.** `train_colab.ipynb` runs the preparation and the training on a Colab GPU and keeps the checkpoints on Google Drive. See [docs/05-training.md](docs/05-training.md#colab-notebook).
 
-`scripts/train_tiny.py` trains the full 162M-parameter model for 10 epochs and writes a checkpoint after each one, an estimated 19.5 GB in total. Read [docs/05-training.md](docs/05-training.md#train_tinypy) before running it.
+`scripts/train_tiny.py` trains the full 163M-parameter model for 10 epochs and writes a checkpoint after each one, an estimated 19.5 GB in total. Read [docs/05-training.md](docs/05-training.md#train_tinypy) before running it.
 
 Study scripts print their results and exit:
 

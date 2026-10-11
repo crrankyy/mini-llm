@@ -153,7 +153,7 @@ Checked on the result:
 - `train.bin` holds exactly 1,241,484 separator tokens, one per document, and ends with one.
 - The crawl of every row in the part taken was read from three files of each source. FineWeb: 7 or 8 crawls per file, spread over 2013 to 2023, in runs of at most 289 rows. FineWeb-Edu: 3 or 4 crawls per file in blocks of about 6,000 rows, for example 2013, 2017, 2020 and 2023 in the first file and 2015, 2018 and 2021 in the eighth. A thinner sample across all 14 FineWeb-Edu files found 30 different crawls from 2013 to 2024.
 - Documents decoded from several places in the file read as ordinary pages: a chemistry lesson and a health article in the FineWeb-Edu part, a careers post, a football report and a news item in the FineWeb part.
-- The loaders `train_wikitext.py` builds give 244,159 training batches per epoch and 256 validation batches. The 40,960 tokens that evaluation reads hold 46 documents.
+- The loaders `train_wikitext.py` builds give 244,158 training batches per epoch and 255 validation batches. The 40,960 tokens that evaluation reads hold 46 documents.
 - `train_wikitext.py`, with the model shrunk as described in [05-training.md](05-training.md#verified-run), trained on these files, was killed, and resumed from its rolling checkpoint.
 - Six separate builds of a 30-million-token set wrote byte-identical files.
 - With the Hub unreachable the script printed the error and ended with exit code 1 in 24 seconds, leaving no manifest.
@@ -183,8 +183,10 @@ Verified with the stand-in text: `train.bin` held exactly the ids the tokenizer 
 | Script | Loader | Source | `batch_size` | `max_length` | `stride` | Train `shuffle` / `drop_last` | `num_workers` |
 |---|---|---|---|---|---|---|---|
 | `train_tiny.py` | `create_dataloader` | `data/basic-data.txt`, split 90/10 by characters | 2 | 256 | 256 | yes / yes | 0 |
-| `train_wikitext.py` | `create_memmap_dataloader` | `<--data-dir>/*.bin` | 16 | 256 | 256 | seeded order per epoch / yes | 2 |
+| `train_wikitext.py` | `create_memmap_dataloader` | `<--data-dir>/*.bin` | `--batch-size`, 4 by default | 1,024 | 1,024 | seeded order per epoch / yes | 2 |
 
 Validation loaders in both scripts use `shuffle=False, drop_last=False`. `train_wikitext.py` builds a third loader over `train.bin` with `shuffle=True, drop_last=True`, from which evaluation draws its training batches.
+
+`train_wikitext.py` cuts windows as long as the model's context. `train_tiny.py` keeps windows of 256 tokens, a quarter of the context, because its text is too short for longer ones: the validation part would not fill one window of 1,024.
 
 For `train_tiny.py` the numbers are (verified): 20,480 characters, split at character 18,432; 4,423 training tokens giving 17 windows and 8 batches; 522 validation tokens giving 2 windows and 1 batch.
