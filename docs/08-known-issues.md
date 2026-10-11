@@ -8,9 +8,9 @@ Line numbers refer to the layout after the reorganization of 2026-10-11. Issues 
 
 | # | Issue | Location | Status |
 |---|---|---|---|
-| 1 | Causal mask was never applied | `src/mini_llm/model/attention.py:54` | fixed 2026-10-11 |
-| 2 | Resuming into a compiled model failed | `scripts/train_wikitext.py:130`, `:145` | fixed 2026-10-11 |
-| 3 | Interrupt checkpoint was never resumed (fixed); final weights saved regardless | `scripts/train_wikitext.py:162`, `:170` | first part fixed 2026-10-11; second open, verified |
+| 1 | Causal mask was never applied | `src/mini_llm/model/attention.py:48` | fixed 2026-10-11 |
+| 2 | Resuming into a compiled model failed | `scripts/train_wikitext.py:158`, `:173` | fixed 2026-10-11 |
+| 3 | Interrupt checkpoint was never resumed (fixed); final weights saved regardless | `scripts/train_wikitext.py:191`, `:199` | first part fixed 2026-10-11; second open, verified |
 | 4 | `architecture.py` could not be imported | `study/p04_gpt/architecture.py:5` | fixed 2026-10-11 |
 | 5 | Config name and vocabulary size do not match the model | `src/mini_llm/config.py:1-2` | open; verified |
 | 6 | `train_tiny.py` left checkpoints that the other scripts picked up | `scripts/train_tiny.py:148` | fixed 2026-10-11 |
@@ -19,7 +19,7 @@ Line numbers refer to the layout after the reorganization of 2026-10-11. Issues 
 | 9 | `SelfAttention_v2` builds its dropout inside `forward` | `study/p03_attention/self_attention.py:53` | open; verified |
 | 10 | Checkpoints are loaded with `weights_only=False` | `scripts/generate.py:42`, `src/mini_llm/training/checkpoint.py:45` | open; from reading |
 | 11 | Sampling an id the tokenizer cannot decode stopped the run | `src/mini_llm/generation.py:53` | fixed 2026-10-11 |
-| 12 | `train_wikitext.py` cannot start its DataLoader workers on macOS | `scripts/train_wikitext.py:85`, `:98`, `:108` | open; verified |
+| 12 | `train_wikitext.py` cannot start its DataLoader workers on macOS | `scripts/train_wikitext.py:101`, `:114`, `:124` | open; verified |
 
 Before a long training run, read [Across sessions](05-training.md#across-sessions), which lists what a run on Colab can still lose and what has not been checked there.
 
@@ -34,7 +34,7 @@ mask_bool = self.mask.bool()[:num_tokens, :num_tokens]
 attention_scores.masked_fill(mask_bool, -torch.inf)
 ```
 
-`masked_fill` returns a new tensor. The result was not assigned, so `attention_scores` reached softmax unmasked and every position attended to the positions after it. The second line now assigns the result back to `attention_scores`, both in the library and in the copy at `study/p03_attention/self_attention.py:126`. `tests/test_causal_mask.py` fails if the assignment is removed again (verified).
+`masked_fill` returns a new tensor. The result was not assigned, so `attention_scores` reached softmax unmasked and every position attended to the positions after it. The fix assigned the result back to `attention_scores`, in the library and in the copy at `study/p03_attention/self_attention.py:126`. Later the same day the library stopped building the mask itself: it passes `is_causal=True` to PyTorch's attention function (`src/mini_llm/model/attention.py:48`), and only the study copy still has the assignment. `tests/test_causal_mask.py` fails if `is_causal` is set to `False` (verified).
 
 What followed from the bug:
 
@@ -60,13 +60,13 @@ with torch.no_grad():
     print((model(a) - model(b)).abs().amax(dim=-1)[0])
 ```
 
-Before the fix this printed `tensor([0.0890, 0.0892, 0.0777, 0.0741, 0.0840, 1.2428])`. It now prints `tensor([0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 1.2433])`: the first five values are exactly zero, because nothing before the last position can see the change.
+Before the fix this printed `tensor([0.0890, 0.0892, 0.0777, 0.0741, 0.0840, 1.2428])`. Straight after the fix it printed `tensor([0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 1.2433])`. With the smaller initial weights the model got later that day it prints `tensor([0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.4424])`. The first five values are exactly zero, because nothing before the last position can see the change.
 
 ### 2. Resuming into a compiled model failed (fixed)
 
 Fixed on 2026-10-11. `train_wikitext.py` used to compile the model before it looked for a checkpoint. By the time the checkpoint was loaded, `model` was the `OptimizedModule` wrapper, whose keys all start with `_orig_mod.`, while the resume code strips that prefix from the checkpoint. `load_state_dict` raised `RuntimeError: Error(s) in loading state_dict for OptimizedModule: Missing key(s) in state_dict: "_orig_mod.token_embedding.weight", ...`, so a run with a compiled model could not be continued by a later run.
 
-The script now loads the checkpoint into the plain model (line 130) and compiles afterwards (line 145). The prefix is still stripped, so checkpoints written by a compiled model load, including ones written before the fix.
+The script now loads the checkpoint into the plain model (line 158) and compiles afterwards (line 173). The prefix is still stripped, so checkpoints written by a compiled model load, including ones written before the fix.
 
 Verified on torch 2.2.2 on CPU, with a shrunken model and a real `OptimizedModule`: a run was killed in the middle of epoch 3, and the next run resumed from `ep2` with every weight tensor and the whole optimizer state equal to the checkpoint. Before the fix that second run stopped with the error above. The runs used `torch.compile`'s `eager` backend, because the code its default backend generates hangs on that machine. Not run on Colab or on CUDA.
 
@@ -82,9 +82,9 @@ Fixed on 2026-10-11. Line 5 imported from `sfeedforward`, which never existed, s
 
 ### 5. The config name and vocabulary size do not match the model
 
-- `GPT_CONFIG_124M` builds a model with 239,365,632 parameters (verified). The output file is also named `gpt_wikitext_124M.pth`.
-- `vocab_size` is 100,352 while `cl100k_base` has 100,277 tokens (verified). The 75 extra rows in the token embedding and in the output head are never selected by the tokenizer.
-- The output head is a separate 77M-parameter matrix; it is not tied to the token embedding (verified).
+- `GPT_CONFIG_124M` builds a model with 162,295,296 parameters (verified). The output file is also named `gpt_wikitext_124M.pth`.
+- `vocab_size` is 100,352 while `cl100k_base` has 100,277 tokens (verified). The 75 extra rows of the embedding matrix are never selected by the tokenizer.
+- Until 2026-10-11 the output head was a separate 77M-parameter matrix and the total was 239,365,632. The head now shares the token embedding's matrix.
 
 This matters for memory, for checkpoint size, and for anyone comparing against GPT-2 small. See [04-model.md](04-model.md#parameter-budget). The extra rows are also part of issue 11.
 
@@ -132,7 +132,7 @@ Both `torch.load` calls disable the restricted unpickler. That is what lets them
 
 Fixed on 2026-10-11. The output head has 100,352 entries, but `tokenizer.decode` raises `KeyError` for 91 of those ids: 100,256, 100,261 to 100,275, and the 75 from 100,277 to 100,351 (verified with tiktoken 0.14.0). Nothing stops the model from sampling one of them.
 
-- **In the trainer.** `generate_and_print_sample` runs at the end of each epoch, before the checkpoint is saved (`src/mini_llm/training/trainer.py:96` and `:101`). A sample containing one of these ids ended the run, and that epoch's checkpoint was never written.
+- **In the trainer.** `generate_and_print_sample` runs at the end of each epoch, before the checkpoint is saved (`src/mini_llm/training/trainer.py:128` and `:133`). A sample containing one of these ids ended the run, and that epoch's checkpoint was never written.
 - **In `generate.py`.** The same exception ended the prompt loop.
 
 Both now decode through `decode_token_ids` (`src/mini_llm/generation.py:53`). It decodes one id at a time and writes an id that has no token as its number, for example `<|100289|>`. When every id has a token it returns exactly what `tokenizer.decode` returns. Sampling is unchanged: the model can still pick these ids, and the marker shows when it does.
@@ -155,20 +155,22 @@ Linux starts workers by forking, which does not re-run the script, so Colab is n
 
 | Item | Location | Notes |
 |---|---|---|
-| An interrupt can land inside an optimizer update | `src/mini_llm/training/trainer.py:118` | the position saved on `Ctrl-C` then holds part of that update, and its batch can be counted one off; from reading |
+| An interrupt can land inside an optimizer update | `src/mini_llm/training/trainer.py:151` | the state saved on `Ctrl-C` then holds part of that update while the position says it has not been made, so the next run makes it again; from reading |
+| The learning-rate curve follows the options | `scripts/train_wikitext.py:139-144` | it is worked out from `--epochs`, `--accumulate`, `--lr` and `--warmup-share` at every start. A run resumed with a different value continues on a different curve, and raising `--epochs` after the last epoch moves the rate back up; from reading |
+| The training defaults have not been run | `scripts/train_wikitext.py:40-51` | 16 batches per update, a peak rate of 6e-4 and a 3% warmup are choices; see [05-training.md](05-training.md#updates-and-learning-rate) |
 | The newer rolling file is chosen by modification time | `src/mini_llm/training/checkpoint.py:31` | if the two times were ever out of order, a run would resume from the other file, one save earlier; not checked on a Drive mount |
 | `generate.py` does not fall back | `scripts/generate.py:31` | without `--weights` it takes the first file a resume would try and stops if that one cannot be read |
-| Deleted checkpoints stay in Drive's Trash | `src/mini_llm/training/checkpoint.py:111` | on a Drive mount `os.remove` moves the file to the Trash, where it uses space until the Trash is emptied (Colab's FAQ; not run) |
+| Deleted checkpoints stay in Drive's Trash | `src/mini_llm/training/checkpoint.py:116` | on a Drive mount `os.remove` moves the file to the Trash, where it uses space until the Trash is emptied (Colab's FAQ; not run) |
 | Whole split tokenized in memory | `scripts/prepare_wikitext.py:19-24` | all ids go into a Python list, then an array, before the `memmap` write. `prepare_fineweb.py` writes as it goes |
 | `prepare_fineweb.py` ends with `os._exit` | `scripts/prepare_fineweb.py:128` | without it the process hangs at exit after a stream was closed early, an Arrow bug; see [02-data-pipeline.md](02-data-pipeline.md#what-the-script-does) (verified with pyarrow 25.0.1) |
 | Only the start of each FineWeb file is used | `src/mini_llm/corpus.py:30` | every file gives the same amount, taken from its beginning; for FineWeb-Edu that is 3 or 4 crawls per file and at least 30 in all, not every crawl in the subset |
 | No document separators in the WikiText files | `scripts/prepare_wikitext.py:20-22` | articles are concatenated; no end-of-text token between them. `prepare_fineweb.py` does add one after every document |
-| Validation loss is measured on the same 160 windows every time | `scripts/train_wikitext.py:157` | `eval_iter=10` batches from a validation loader that is not shuffled: the first 40,960 tokens of `validation.bin` and nothing else; from reading |
+| Validation loss is measured on the same 160 windows every time | `scripts/train_wikitext.py:185` | `eval_iter=10` batches from a validation loader that is not shuffled: the first 40,960 tokens of `validation.bin` and nothing else; from reading |
 | Last window dropped | `src/mini_llm/data.py:37` | `MemMapDataset` can omit one valid final window (verified) |
 | Context size read from the global config | `scripts/generate.py:56` | `generate_text` ignores the size of the model it is given |
 | Optimizer state loaded for inference | `scripts/generate.py:42` | given a full checkpoint, `map_location=device` moves the AdamW state to the device before it is dropped |
 | Unused imports and variables | the three scripts that build a model | `train_tiny.py`: `nn`, `batch`. `train_wikitext.py`: `nn`, `textgen_v1`, `text_to_token_ids`, `token_ids_to_text`, `calc_loss_loader`. `generate.py`: `sys` |
-| Four test files | `tests/` | the causal mask, the decoding of sampled ids, checkpointing with resume, and the preparation of the FineWeb mix; the loss, evaluation, the in-memory loader and the WikiText preparation have no tests |
+| Six test files | `tests/` | the causal mask; the model's layers, tied output head and initial weights; the learning-rate schedule; the decoding of sampled ids; checkpointing with resume and gradient accumulation; and the preparation of the FineWeb mix. The loss, evaluation, the in-memory loader and the WikiText preparation have no tests |
 
 Four earlier rows were resolved on 2026-10-11 by the rolling checkpoint: a checkpoint was written only at the end of an epoch, a checkpoint that was cut off stopped the next run, the loaded checkpoint stayed in memory for the whole run, and the step counters restarted on every resume.
 
@@ -180,8 +182,8 @@ The study scripts keep their own copies of code that also lives in the library. 
 |---|---|
 | `tokenize` | `study/p01_tokenization/simple_tokenizer.py`, `study/p01_tokenization/encoder_decoder.py` |
 | `CustomDataset`, `create_dataloader` | `study/p02_data_loading/dataloader.py`, `src/mini_llm/data.py` (the second adds `drop_last` and `num_workers`) |
-| `MultiHeadedAttention` | `study/p03_attention/self_attention.py`, `src/mini_llm/model/attention.py` |
-| The GPT network | `DummyGPT` in `study/p04_gpt/architecture.py`, `GPTModel` in `src/mini_llm/model/gpt.py` |
+| `MultiHeadedAttention` | `study/p03_attention/self_attention.py`, `src/mini_llm/model/attention.py` (the second leaves the scores, mask, softmax and dropout to a PyTorch function and stores no mask) |
+| The GPT network | `DummyGPT` in `study/p04_gpt/architecture.py`, `GPTModel` in `src/mini_llm/model/gpt.py` (the second ties the output head to the token embedding and draws small initial weights) |
 | Top-k and temperature sampling loop | `textgen_v2` in `src/mini_llm/generation.py`, `generate_text` in `scripts/generate.py` |
 | `GPT_CONFIG_124M` | `src/mini_llm/config.py`, `study/p04_gpt/architecture.py` (different values) |
 | Parameter count and size printout | `scripts/train_tiny.py`, `scripts/train_wikitext.py` |

@@ -61,6 +61,8 @@ uv run python scripts/generate.py            # loads weights from checkpoints/, 
 | `--checkpoint-dir DIR` | `train_wikitext.py` | write checkpoints and final weights to `DIR`, and resume from there |
 | `--save-every N` | `train_wikitext.py` | save the rolling checkpoint every `N` training steps (default 2000) |
 | `--keep-checkpoints N` | `train_wikitext.py` | keep the newest `N` end-of-epoch checkpoints and delete older ones (default 10) |
+| `--accumulate N` | `train_wikitext.py` | add up the gradients of `N` batches for one weight update (default 16) |
+| `--lr X`, `--warmup-share X` | `train_wikitext.py` | the peak learning rate, and the share of all weight updates during which the rate rises to it (defaults: 6e-4; 0.03) |
 | `--checkpoint-dir DIR` | `generate.py` | search `DIR` for weights |
 | `--weights FILE` | `generate.py` | load exactly this weights or checkpoint file |
 
@@ -70,7 +72,7 @@ And the small-data variant:
 uv run python scripts/train_tiny.py
 ```
 
-Before running `train_tiny.py`, note what it does: it trains the full 239M-parameter model for 10 epochs and writes a checkpoint after each epoch into `checkpoints/tiny`, about 29 GB in total. See [05-training.md](05-training.md#train_tinypy).
+Before running `train_tiny.py`, note what it does: it trains the full 162M-parameter model for 10 epochs and writes a checkpoint after each epoch into `checkpoints/tiny`, about 19.5 GB in total. See [05-training.md](05-training.md#train_tinypy).
 
 How far each of these was run for the docs is listed in [README.md](README.md#snapshot). `train_wikitext.py` does not run on macOS as written; see [known issue 12](08-known-issues.md#12-train_wikitextpy-cannot-start-its-dataloader-workers-on-macos). The intended way to train is `train_colab.ipynb`, described in [05-training.md](05-training.md#colab-notebook).
 
@@ -115,13 +117,16 @@ Verified: `15 passed`. pytest is configured in `pyproject.toml` to collect from 
 
 Measured on the Intel MacBook the docs were checked on (Radeon Pro 5300M, 4 GB), with torch 2.2.2:
 
-| Workload, full 239M model | CPU | MPS |
+| Workload, full 162M model | CPU | MPS |
 |---|---|---|
-| One forward pass, 1 x 256 tokens | 0.300 s | 0.093 s |
-| One training step, batch 2 x 256 | 3.77 s | 2.68 s |
-| One training step, batch 4 x 256 | not run | out of memory |
+| One forward pass, 1 x 256 tokens | 0.242 s | 0.071 s |
+| One training step, batch 2 x 256 | 2.78 s | 1.39 s |
+| One training step, batch 4 x 256 | not run | 1.72 s |
+| One training step, batch 8 x 256 | not run | out of memory |
 
-So MPS is worth having for `generate.py`, and that machine cannot train the full model at a useful batch size.
+So MPS is worth having for `generate.py`. For training, the best that machine does is 595 tokens a second, at which one pass over the FineWeb mix would take about 19 days.
+
+Before the model changed on 2026-10-11 (239M parameters, hand-written attention) the same measurements were 0.300 s and 0.093 s for the forward pass, 3.77 s and 2.68 s for the training step at batch 2, and batch 4 ran out of memory on MPS.
 
 ## What gets written to disk
 
@@ -129,7 +134,7 @@ So MPS is worth having for `generate.py`, and that machine cannot train the full
 |---|---|---|---|
 | `data/fineweb-mix/train.bin`, `validation.bin`, `manifest.json` | `prepare_fineweb.py` | flat `uint32` token ids, 4 bytes each, no header, with token 100,257 after every document; the manifest records what was prepared | yes |
 | `data/wikitext-103/train.bin`, `validation.bin` | `prepare_wikitext.py` | flat `uint32` token ids, 4 bytes each, no header | yes |
-| `checkpoints/gpt_wikitext_checkpoint_latest_a.pth`, `..._latest_b.pth` | the trainer, called by `train_wikitext.py` | the rolling checkpoint, two files written in turn. Dict: `epoch`, `batches_done`, `model_state_dict`, `optimizer_state_dict`, `scaler_state_dict`, `global_step`, `tokens_seen` | yes |
+| `checkpoints/gpt_wikitext_checkpoint_latest_a.pth`, `..._latest_b.pth` | the trainer, called by `train_wikitext.py` | the rolling checkpoint, two files written in turn. Dict: `epoch`, `batches_done`, `model_state_dict`, `optimizer_state_dict`, `scaler_state_dict`, `global_step`, `tokens_seen`, `updates_done` | yes |
 | `checkpoints/gpt_wikitext_checkpoint_ep{N}.pth` | the trainer, called by `train_wikitext.py` | the same dict at the end of epoch `N`; the newest 10 are kept | yes |
 | `checkpoints/tiny/gpt_wikitext_checkpoint_ep{N}.pth` | the trainer, called by `train_tiny.py` | the same dict | yes |
 | `checkpoints/gpt_wikitext_124M.pth` | `train_wikitext.py` at exit | bare state dict; keys prefixed `_orig_mod.` if the model was compiled | yes |
