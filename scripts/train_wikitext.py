@@ -1,4 +1,5 @@
 import argparse
+import math
 import torch
 import torch.nn as nn
 import tiktoken
@@ -10,6 +11,7 @@ from mini_llm.data import create_memmap_dataloader
 from mini_llm.training.loss import calc_loss_loader
 from mini_llm.training.trainer import train_model_v1
 from mini_llm.training.checkpoint import load_latest_checkpoint, training_progress
+from mini_llm.training.schedule import learning_rate_at
 
 from mini_llm.config import GPT_CONFIG_124M
 from mini_llm.device import get_device
@@ -35,9 +37,23 @@ parser.add_argument(
     "--keep-checkpoints", type=int, default=10,
     help="how many end-of-epoch checkpoints to keep; older ones are deleted"
 )
+parser.add_argument(
+    "--accumulate", type=int, default=16,
+    help="batches whose gradients are added up for one weight update"
+)
+parser.add_argument(
+    "--lr", type=float, default=6e-4,
+    help="peak learning rate; it is reached at the end of the warmup and then falls to a tenth of this"
+)
+parser.add_argument(
+    "--warmup-share", type=float, default=0.03,
+    help="share of all weight updates during which the learning rate rises to its peak"
+)
 args = parser.parse_args()
-if args.save_every < 1 or args.keep_checkpoints < 1 or args.epochs < 1:
-    parser.error("--save-every, --keep-checkpoints and --epochs must be at least 1")
+if args.save_every < 1 or args.keep_checkpoints < 1 or args.epochs < 1 or args.accumulate < 1:
+    parser.error("--save-every, --keep-checkpoints, --epochs and --accumulate must be at least 1")
+if args.lr <= 0 or not 0 <= args.warmup_share <= 1:
+    parser.error("--lr must be above 0 and --warmup-share between 0 and 1")
 checkpoint_dir = args.checkpoint_dir
 
 # Use GPU if available
@@ -113,10 +129,22 @@ print("Val loader initialized. Number of batches:", len(val_dataloader))
 
 optimizer = torch.optim.AdamW(
     model.parameters(),
-    lr=5e-4, weight_decay=0.1
+    lr=args.lr, weight_decay=0.1
 )
 
 num_epochs = args.epochs # Total number of epochs you want to train for
+
+# The learning rate rises to --lr and then falls along a cosine to a tenth of it, over all the
+# weight updates of all the epochs. Every update but the last of an epoch takes --accumulate batches
+updates_per_epoch = math.ceil(len(train_dataloader) / args.accumulate)
+total_updates = num_epochs * updates_per_epoch
+warmup_updates = round(args.warmup_share * total_updates)
+
+def lr_schedule(update):
+    return learning_rate_at(update, total_updates, args.lr, warmup_updates, 0.1 * args.lr)
+
+print(f"Weight updates: {total_updates:,} in total, one per {args.accumulate} batches; "
+      f"the learning rate peaks at {args.lr} after {warmup_updates:,} of them.")
 
 start_epoch = 0
 resume = None
@@ -157,7 +185,8 @@ else:
             num_epochs=num_epochs - start_epoch, eval_frq=500, eval_iter=10,
             start_context="The secret to training large models is", tokenizer=tokenizer, start_epoch=start_epoch,
             checkpoint_dir=checkpoint_dir, save_frq=args.save_every, keep_checkpoints=args.keep_checkpoints,
-            resume=resume, eval_train_loader=train_eval_dataloader
+            resume=resume, eval_train_loader=train_eval_dataloader,
+            accumulate=args.accumulate, lr_schedule=lr_schedule
         )
     except KeyboardInterrupt:
         # the trainer has already saved the position it had reached
