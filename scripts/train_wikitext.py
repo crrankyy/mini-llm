@@ -9,6 +9,7 @@ from mini_llm.generation import text_to_token_ids, token_ids_to_text
 from mini_llm.data import create_memmap_dataloader
 from mini_llm.training.loss import calc_loss_loader
 from mini_llm.training.trainer import train_model_v1
+from mini_llm.training.checkpoint import load_latest_checkpoint, training_progress
 
 from mini_llm.config import GPT_CONFIG_124M
 from mini_llm.device import get_device
@@ -18,7 +19,18 @@ parser.add_argument(
     "--checkpoint-dir", default="checkpoints",
     help="where checkpoints and the final weights are written, and where a resume looks for them"
 )
-checkpoint_dir = parser.parse_args().checkpoint_dir
+parser.add_argument(
+    "--save-every", type=int, default=2000,
+    help="training steps between saves of the rolling checkpoint, which a later run resumes from"
+)
+parser.add_argument(
+    "--keep-checkpoints", type=int, default=10,
+    help="how many end-of-epoch checkpoints to keep; older ones are deleted"
+)
+args = parser.parse_args()
+if args.save_every < 1 or args.keep_checkpoints < 1:
+    parser.error("--save-every and --keep-checkpoints must be at least 1")
+checkpoint_dir = args.checkpoint_dir
 
 # Use GPU if available
 device = get_device()
@@ -59,6 +71,18 @@ train_dataloader = create_memmap_dataloader(
     batch_size=16, # Increased for T4 GPU
     max_length=GPT_CONFIG_124M["context_length"],
     stride=GPT_CONFIG_124M["context_length"],
+    drop_last=True,
+    num_workers=2,
+    # a fixed order per epoch, so a run that stops inside an epoch can be continued where it stopped
+    seed=123
+)
+
+# evaluation keeps drawing random training batches, which the ordered loader above cannot give
+train_eval_dataloader = create_memmap_dataloader(
+    bin_file_path=f"{data_dir}/train.bin",
+    batch_size=16,
+    max_length=GPT_CONFIG_124M["context_length"],
+    stride=GPT_CONFIG_124M["context_length"],
     shuffle=True,
     drop_last=True,
     num_workers=2
@@ -84,13 +108,11 @@ optimizer = torch.optim.AdamW(
 
 num_epochs = 5 # Total number of epochs you want to train for
 
-import glob
 start_epoch = 0
-checkpoints = sorted(glob.glob(os.path.join(checkpoint_dir, "gpt_wikitext_checkpoint_ep*.pth")))
-if checkpoints:
-    latest_checkpoint = checkpoints[-1]
+resume = None
+checkpoint, latest_checkpoint = load_latest_checkpoint(checkpoint_dir)
+if checkpoint is not None:
     print(f"Found checkpoint: {latest_checkpoint}. Resuming training...")
-    checkpoint = torch.load(latest_checkpoint, map_location=device, weights_only=False)
     
     # Handle the fact that torch.compile adds an _orig_mod. prefix to keys
     state_dict = checkpoint['model_state_dict']
@@ -99,6 +121,10 @@ if checkpoints:
     
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch']
+    resume = training_progress(checkpoint, latest_checkpoint)
+
+    # the copy that was read from disk is no longer needed and is as large as the file
+    del checkpoint, state_dict, unwrapped_state_dict
 
 # compiled only after the resume: the wrapper torch.compile returns expects the
 # _orig_mod. prefix on every key, so a checkpoint has to be loaded into the plain model.
@@ -113,24 +139,19 @@ if device.type != "mps":
 if start_epoch >= num_epochs:
     print(f"Already completed {num_epochs} epochs. Training is done!")
 else:
-    print(f"Starting training from epoch {start_epoch + 1}...")
+    batches_done = resume["batches_done"] if resume is not None else 0
+    print(f"Starting training from epoch {start_epoch + 1}, after {batches_done} of its batches...")
     try:
         train_losses, val_losses, tokens_seen = train_model_v1(
             model, train_dataloader, val_dataloader, optimizer, device,
             num_epochs=num_epochs - start_epoch, eval_frq=500, eval_iter=10,
             start_context="The secret to training large models is", tokenizer=tokenizer, start_epoch=start_epoch,
-            checkpoint_dir=checkpoint_dir
+            checkpoint_dir=checkpoint_dir, save_frq=args.save_every, keep_checkpoints=args.keep_checkpoints,
+            resume=resume, eval_train_loader=train_eval_dataloader
         )
     except KeyboardInterrupt:
-        print("\n[!] Training manually stopped! Saving emergency checkpoint...")
-        interrupted_path = os.path.join(checkpoint_dir, "gpt_wikitext_checkpoint_interrupted.pth")
-        torch.save({
-            'epoch': start_epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-        }, interrupted_path)
-        print(f"--> Emergency checkpoint saved to '{interrupted_path}'!")
-        print("You can safely close Colab now. Next time you run this, it will resume from here.")
+        # the trainer has already saved the position it had reached
+        print("\n[!] Training manually stopped! The next run resumes from the rolling checkpoint.")
 
 print("Training script finished.")
 

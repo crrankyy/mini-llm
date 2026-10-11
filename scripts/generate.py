@@ -1,5 +1,4 @@
 import argparse
-import glob
 import torch
 import tiktoken
 import sys
@@ -9,6 +8,7 @@ from mini_llm.model.gpt import GPTModel
 from mini_llm.config import GPT_CONFIG_124M
 from mini_llm.device import get_device
 from mini_llm.generation import decode_token_ids
+from mini_llm.training.checkpoint import resume_candidates
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate text from trained weights at an interactive prompt.")
@@ -27,10 +27,10 @@ def find_weights(checkpoint_dir):
     if os.path.exists(final_path):
         return final_path
 
-    # Fallback to check if they have a checkpoint
-    checkpoints = sorted(glob.glob(os.path.join(checkpoint_dir, "gpt_wikitext_checkpoint_*.pth")))
+    # Fallback to check if they have a checkpoint: the one a training run would resume from
+    checkpoints = resume_candidates(checkpoint_dir)
     if checkpoints:
-        return checkpoints[-1]
+        return checkpoints[0]
 
     return final_path
 
