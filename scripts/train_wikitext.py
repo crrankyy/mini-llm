@@ -77,14 +77,6 @@ val_dataloader = create_memmap_dataloader(
 print("Train loader initialized. Number of batches:", len(train_dataloader))
 print("Val loader initialized. Number of batches:", len(val_dataloader))
 
-# on MPS torch.compile returns without error and then fails at the first forward pass
-if device.type != "mps":
-    print("Compiling the model using PyTorch 2.0 (this takes a minute but speeds up training)...")
-    try:
-        model = torch.compile(model)
-    except Exception as e:
-        print(f"torch.compile not supported or failed: {e}. Running in eager mode.")
-
 optimizer = torch.optim.AdamW(
     model.parameters(),
     lr=5e-4, weight_decay=0.1
@@ -107,6 +99,16 @@ if checkpoints:
     
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch']
+
+# compiled only after the resume: the wrapper torch.compile returns expects the
+# _orig_mod. prefix on every key, so a checkpoint has to be loaded into the plain model.
+# skipped on MPS, where torch.compile returns without error and then fails at the first forward pass
+if device.type != "mps":
+    print("Compiling the model using PyTorch 2.0 (this takes a minute but speeds up training)...")
+    try:
+        model = torch.compile(model)
+    except Exception as e:
+        print(f"torch.compile not supported or failed: {e}. Running in eager mode.")
 
 if start_epoch >= num_epochs:
     print(f"Already completed {num_epochs} epochs. Training is done!")
