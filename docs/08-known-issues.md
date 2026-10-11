@@ -9,19 +9,19 @@ Line numbers refer to the layout after the reorganization of 2026-10-11. Issues 
 | # | Issue | Location | Status |
 |---|---|---|---|
 | 1 | Causal mask was never applied | `src/mini_llm/model/attention.py:54` | fixed 2026-10-11 |
-| 2 | Resuming into a compiled model fails | `scripts/train_wikitext.py:84`, `:106` | open; verified on torch 2.2.2 |
-| 3 | Interrupt checkpoint is never resumed; final weights saved regardless | `scripts/train_wikitext.py:97`, `:124`, `:137` | open; sort order verified, rest from reading |
+| 2 | Resuming into a compiled model failed | `scripts/train_wikitext.py:98`, `:109` | fixed 2026-10-11 |
+| 3 | Interrupt checkpoint is never resumed; final weights saved regardless | `scripts/train_wikitext.py:89`, `:126`, `:139` | open; verified |
 | 4 | `architecture.py` could not be imported | `study/p04_gpt/architecture.py:5` | fixed 2026-10-11 |
 | 5 | Config name and vocabulary size do not match the model | `src/mini_llm/config.py:1-2` | open; verified |
 | 6 | `train_tiny.py` left checkpoints that the other scripts picked up | `scripts/train_tiny.py:148` | fixed 2026-10-11 |
 | 7 | `CustomDataset` can emit a short final target | `src/mini_llm/data.py:12` | open; verified |
 | 8 | Unknown-token handling in the stage 1 tokenizers | `study/p01_tokenization/encoder_decoder.py:20`, `:35` | open; verified |
 | 9 | `SelfAttention_v2` builds its dropout inside `forward` | `study/p03_attention/self_attention.py:53` | open; verified |
-| 10 | Checkpoints are loaded with `weights_only=False` | `scripts/generate.py:41`, `scripts/train_wikitext.py:101` | open; from reading |
-| 11 | Sampling an id the tokenizer cannot decode stops the run | `src/mini_llm/generation.py:57`, `scripts/generate.py:97` | open; verified |
+| 10 | Checkpoints are loaded with `weights_only=False` | `scripts/generate.py:42`, `scripts/train_wikitext.py:93` | open; from reading |
+| 11 | Sampling an id the tokenizer cannot decode stopped the run | `src/mini_llm/generation.py:53` | fixed 2026-10-11 |
 | 12 | `train_wikitext.py` cannot start its DataLoader workers on macOS | `scripts/train_wikitext.py:64`, `:74` | open; verified |
 
-Before a long training run, issues 2, 3 and 11 are the ones that can cost work.
+Before a long training run, issue 3 and the first two rows under [Smaller items](#smaller-items) are the ones that can cost work.
 
 ## Details
 
@@ -62,18 +62,18 @@ with torch.no_grad():
 
 Before the fix this printed `tensor([0.0890, 0.0892, 0.0777, 0.0741, 0.0840, 1.2428])`. It now prints `tensor([0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 1.2433])`: the first five values are exactly zero, because nothing before the last position can see the change.
 
-### 2. Resuming into a compiled model fails
+### 2. Resuming into a compiled model failed (fixed)
 
-`train_wikitext.py` compiles the model on line 84 and loads the checkpoint on line 106. At that point `model` is the `OptimizedModule` wrapper, whose keys all start with `_orig_mod.`. The code strips that prefix from the checkpoint and then loads the stripped keys into the wrapper.
+Fixed on 2026-10-11. `train_wikitext.py` used to compile the model before it looked for a checkpoint. By the time the checkpoint was loaded, `model` was the `OptimizedModule` wrapper, whose keys all start with `_orig_mod.`, while the resume code strips that prefix from the checkpoint. `load_state_dict` raised `RuntimeError: Error(s) in loading state_dict for OptimizedModule: Missing key(s) in state_dict: "_orig_mod.token_embedding.weight", ...`, so a run with a compiled model could not be continued by a later run.
 
-Verified on torch 2.2.2: `load_state_dict` raises `RuntimeError: Error(s) in loading state_dict for OptimizedModule: Missing key(s) in state_dict: "_orig_mod.token_embedding.weight", ...`. The same stripped dict loads into an uncompiled model.
+The script now loads the checkpoint into the plain model (line 98) and compiles afterwards (line 109). The prefix is still stripped, so checkpoints written by a compiled model load, including ones written before the fix.
 
-So resume works only when the model was not compiled: when `torch.compile` raised and the script fell back to eager mode, or on MPS, where compilation is skipped. Resume into an uncompiled model is verified. This was not checked on the torch version Colab installs, which is where it matters: a Colab session ends, and the next one has to resume.
+Verified on torch 2.2.2 on CPU, with a shrunken model and a real `OptimizedModule`: a run was killed in the middle of epoch 3, and the next run resumed from `ep2` with every weight tensor and the whole optimizer state equal to the checkpoint. Before the fix that second run stopped with the error above. The runs used `torch.compile`'s `eager` backend, because the code its default backend generates hangs on that machine. Not run on Colab or on CUDA.
 
 ### 3. The interrupt checkpoint is never resumed, and final weights are saved regardless
 
-- The `Ctrl-C` handler writes `gpt_wikitext_checkpoint_interrupted.pth` and prints "Next time you run this, it will resume from here." The resume pattern on line 97 is `gpt_wikitext_checkpoint_ep*.pth`, which does not match that name. The next run resumes from the last completed epoch, and the interrupted epoch starts over.
-- Lines 133 to 138 run after the `try` block whenever the script has not died from an error. `gpt_wikitext_124M.pth` is written after an interrupt, and also when the script found all epochs already complete. The file existing does not mean training finished.
+- The `Ctrl-C` handler writes `gpt_wikitext_checkpoint_interrupted.pth` and prints "Next time you run this, it will resume from here." The resume pattern on line 89 is `gpt_wikitext_checkpoint_ep*.pth`, which does not match that name. The next run resumes from the last completed epoch, and the interrupted epoch starts over.
+- Lines 135 to 140 run after the `try` block whenever the script has not died from an error. `gpt_wikitext_124M.pth` is written after an interrupt, and also when the script found all epochs already complete. The file existing does not mean training finished.
 - `generate.py` looks for `gpt_wikitext_124M.pth` first. If it is absent, it takes the last of `sorted(glob("gpt_wikitext_checkpoint_*.pth"))`; `..._interrupted.pth` sorts after every `..._ep{N}.pth` (verified), so the interrupted checkpoint wins over the epoch checkpoints. Passing `--weights` avoids the search.
 
 ### 4. `study/p04_gpt/architecture.py` could not be imported (fixed)
@@ -128,16 +128,20 @@ Verified: in eval mode, two calls on the same input return different outputs, an
 
 Both `torch.load` calls disable the restricted unpickler. That is what lets them read the checkpoint dict, and it also means a `.pth` file can run code when loaded. Load only files produced by these scripts.
 
-### 11. Sampling an id the tokenizer cannot decode stops the run
+### 11. Sampling an id the tokenizer cannot decode stopped the run (fixed)
 
-The output head has 100,352 entries, but `tokenizer.decode` raises `KeyError` for 91 of those ids: 100,256, 100,261 to 100,275, and the 75 from 100,277 to 100,351 (verified with tiktoken 0.14.0). Nothing stops the model from sampling one of them.
+Fixed on 2026-10-11. The output head has 100,352 entries, but `tokenizer.decode` raises `KeyError` for 91 of those ids: 100,256, 100,261 to 100,275, and the 75 from 100,277 to 100,351 (verified with tiktoken 0.14.0). Nothing stops the model from sampling one of them.
 
-- **In the trainer.** `generate_and_print_sample` runs at the end of each epoch, before the checkpoint is saved (`src/mini_llm/training/trainer.py:64` and `:68`). If the 50-token sample contains one of these ids, the exception ends the run and that epoch's checkpoint is never written.
-- **In `generate.py`.** The same exception ends the prompt loop.
+- **In the trainer.** `generate_and_print_sample` runs at the end of each epoch, before the checkpoint is saved (`src/mini_llm/training/trainer.py:64` and `:68`). A sample containing one of these ids ended the run, and that epoch's checkpoint was never written.
+- **In `generate.py`.** The same exception ended the prompt loop.
 
-Verified: with a model trained for only a few steps, the trainer died at the end of an epoch with `KeyError: 'Invalid token for decoding: 100289'` and left no checkpoint for that epoch, and `generate.py` failed the same way.
+Both now decode through `decode_token_ids` (`src/mini_llm/generation.py:53`). It decodes one id at a time and writes an id that has no token as its number, for example `<|100289|>`. When every id has a token it returns exactly what `tokenizer.decode` returns. Sampling is unchanged: the model can still pick these ids, and the marker shows when it does.
 
-These ids never occur as training targets, so training pushes their logits down and the risk falls as the model learns. How likely the failure is after a full epoch on WikiText-103 was not measured.
+Verified with a model made to prefer two of these ids. Before the fix `train_wikitext.py` died at the end of the first epoch with `KeyError: 'Invalid token for decoding: 100289'` and left no checkpoint, and `generate.py` died the same way. Now the trainer prints the sample with the markers in it and saves all five checkpoints, and `generate.py` prints its response. `tests/test_generation.py` covers the decoding and the trainer's sample, and fails if the old decode is put back (verified).
+
+The trainer still prints the sample before it saves the checkpoint, so any other error in the sample would cost that epoch's checkpoint.
+
+These ids never occur as training targets, so training pushes their logits down and the markers should become rarer as the model learns. How often they appear after a full epoch on WikiText-103 was not measured.
 
 ### 12. `train_wikitext.py` cannot start its DataLoader workers on macOS
 
@@ -152,14 +156,16 @@ Linux starts workers by forking, which does not re-run the script, so Colab is n
 | Item | Location | Notes |
 |---|---|---|
 | A checkpoint is written only at the end of an epoch | `src/mini_llm/training/trainer.py:68` | work since the last finished epoch is lost when a run stops; see also issue 3 |
+| A checkpoint that was cut off stops the next run | `scripts/train_wikitext.py:93` | `torch.save` writes straight to the final name and the resume loads the newest file with no fallback. Verified by truncating the newest checkpoint: the next run stopped with `RuntimeError: PytorchStreamReader failed reading zip archive`, and resumed from the checkpoint before it once the damaged file was deleted |
+| Loaded weights stay in memory after a resume | `scripts/train_wikitext.py:93` | `checkpoint` is never released, so a resumed run keeps a second copy of the weights on the device, 957 MB at full size (from reading). The optimizer state is shared with the optimizer, not copied (verified on torch 2.2.2) |
 | Step counters restart on resume | `src/mini_llm/training/trainer.py:14` | `global_step` and `tokens_seen` are saved in each checkpoint and never read back (verified) |
 | Whole split tokenized in memory | `scripts/prepare_wikitext.py:19-24` | all ids go into a Python list, then an array, before the `memmap` write |
 | No document separators | `scripts/prepare_wikitext.py:20-22` | articles are concatenated; no end-of-text token between them |
 | Last window dropped | `src/mini_llm/data.py:37` | `MemMapDataset` can omit one valid final window (verified) |
-| Context size read from the global config | `scripts/generate.py:55` | `generate_text` ignores the size of the model it is given |
-| Optimizer state loaded for inference | `scripts/generate.py:41` | given a full checkpoint, `map_location=device` moves the AdamW state to the device before it is dropped |
+| Context size read from the global config | `scripts/generate.py:56` | `generate_text` ignores the size of the model it is given |
+| Optimizer state loaded for inference | `scripts/generate.py:42` | given a full checkpoint, `map_location=device` moves the AdamW state to the device before it is dropped |
 | Unused imports and variables | the three scripts that build a model | `train_tiny.py`: `nn`, `batch`. `train_wikitext.py`: `nn`, `textgen_v1`, `text_to_token_ids`, `token_ids_to_text`, `calc_loss_loader`. `generate.py`: `sys` |
-| One test file | `tests/` | only the causal mask is tested |
+| Two test files | `tests/` | the causal mask and the decoding of sampled ids; training, resume and data loading have no tests |
 
 ## Duplicated code
 

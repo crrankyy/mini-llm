@@ -69,7 +69,7 @@ The same wrapper for `MemMapDataset`. No tokenizer is involved, since the file a
 
 ## Preparing WikiText-103
 
-`scripts/prepare_wikitext.py` has one function, `prepare_data()`, run under a `main()` guard. It needs the `data` extra (`datasets` and `tqdm`). The real download was not run for these docs; the script was run with `load_dataset` replaced by a few lines of text.
+`scripts/prepare_wikitext.py` has one function, `prepare_data()`, run under a `main()` guard. It needs the `data` extra (`datasets` and `tqdm`). It was run twice for these docs: once with `load_dataset` replaced by a few lines of text, and once for real on 2026-10-11. The real run wrote 120,196,189 training tokens (481 MB) and 252,975 validation tokens (1 MB), took 115 seconds on the Intel MacBook, and peaked at 6.1 GB of memory, because every id goes into a Python list first.
 
 1. `load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1")` downloads the dataset through Hugging Face `datasets`. A comment in the file records why the `Salesforce/` namespace is used: the plain `wikitext` name was deprecated.
 2. Creates `data/wikitext-103/`.

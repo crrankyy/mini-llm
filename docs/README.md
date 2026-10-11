@@ -8,17 +8,18 @@ A GPT-style, decoder-only language model written from scratch in PyTorch. The re
 
 ## Snapshot
 
-These docs were written on 2026-10-10 against commit `0bb727c` and updated on 2026-10-11 for the causal-mask fix and for the reorganization into `src/mini_llm/`, `scripts/` and `study/`. Paths and line numbers refer to the layout after the reorganization.
+These docs were written on 2026-10-10 against commit `0bb727c` and updated on 2026-10-11 for the causal-mask fix, for the reorganization into `src/mini_llm/`, `scripts/` and `study/`, and for the fixes to known issues 2 and 11. Paths and line numbers refer to the layout after the reorganization.
 
 Where a page says **verified**, the behaviour was checked by running the code with Python 3.10.20, torch 2.2.2, tiktoken 0.14.0 and numpy 1.26.4, on CPU unless the page says otherwise.
 
 What was run, and how:
 
 - **`train_tiny.py`, `train_wikitext.py`, `generate.py`**: end to end, on CPU and on MPS, with the model config shrunk to one 8-dimensional layer so a run takes seconds. For `train_wikitext.py` the DataLoader workers were also switched off, because the script cannot start them on macOS (see [08-known-issues.md](08-known-issues.md)).
+- **`train_wikitext.py` with a compiled model**: on CPU with the shrunken config and `torch.compile`'s `eager` backend, as three runs sharing one checkpoint folder: one killed, one interrupted, one run to the end.
 - **`generate.py` at full size**: on MPS, from a 2.88 GB checkpoint with random weights.
-- **`prepare_wikitext.py`**: with the download replaced by a few lines of text.
+- **`prepare_wikitext.py`**: with the download replaced by a few lines of text, and once with the real download.
 
-The following were **not run**: training at full size, the real WikiText-103 download, anything on CUDA, `torch.compile`, and the cells of `train_colab.ipynb` that need Colab. Statements about those come from reading the code.
+The following were **not run**: training at full size, anything on CUDA, `torch.compile` with its default backend, and the cells of `train_colab.ipynb` that need Colab. Statements about those come from reading the code.
 
 ## Two things to know before reading the rest
 
@@ -89,7 +90,8 @@ mini-llm/
 │   ├── p03_attention/         stage 3: attention variants
 │   └── p04_gpt/               stage 4: the sandbox script
 ├── tests/
-│   └── test_causal_mask.py    a position must not see later tokens
+│   ├── test_causal_mask.py    a position must not see later tokens
+│   └── test_generation.py     sampled ids without a token still decode
 ├── data/
 │   └── basic-data.txt         20,480-character short story used by the study scripts
 └── docs/                      this folder
@@ -115,7 +117,7 @@ Paths are relative to `src/mini_llm/`. Imports are absolute, for example `from m
 | `training/loss.py` | `calc_loss_batch`, `calc_loss_loader` | `training/trainer.py`, `training/evaluate.py`, `train_tiny.py` |
 | `training/evaluate.py` | `evaluate_model` | `training/trainer.py` |
 | `training/trainer.py` | `train_model_v1` | `train_tiny.py`, `train_wikitext.py` |
-| `generation.py` | `textgen_v1`, `textgen_v2`, `text_to_token_ids`, `token_ids_to_text`, `generate_and_print_sample` | `training/trainer.py`, `train_tiny.py` |
+| `generation.py` | `textgen_v1`, `textgen_v2`, `text_to_token_ids`, `decode_token_ids`, `token_ids_to_text`, `generate_and_print_sample` | `training/trainer.py`, `train_tiny.py`, `generate.py` |
 
 `train_wikitext.py` also imports `textgen_v1`, `text_to_token_ids`, `token_ids_to_text` and `calc_loss_loader` and never calls them.
 
@@ -151,6 +153,7 @@ Standalone demos. The library does not import any of them.
 | File | Checks |
 |---|---|
 | `tests/test_causal_mask.py` | Changing one token, or one input vector, leaves every earlier output of `GPTModel` and `MultiHeadedAttention` unchanged. Both tests fail if the mask stops being applied (verified). |
+| `tests/test_generation.py` | `decode_token_ids` returns what `tokenizer.decode` returns when every id has a token, writes an id without a token as its number, and lets the trainer's end-of-epoch sample print when the model emits such an id. The last two fail if the old decode is put back (verified). |
 
 ### Other
 

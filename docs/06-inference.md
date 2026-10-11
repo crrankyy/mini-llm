@@ -39,7 +39,8 @@ Top-k is applied before temperature. There is no stop condition; it always gener
 | Function | Behaviour |
 |---|---|
 | `text_to_token_ids(text, tokenizer)` | Encodes with `allowed_special={'<\|endoftext\|>'}` and adds a batch dimension, giving shape `(1, T)` |
-| `token_ids_to_text(token_ids, tokenizer)` | Removes the batch dimension and decodes. Expects a batch of one. |
+| `decode_token_ids(token_ids, tokenizer)` | Decodes a list of ids one at a time. An id the tokenizer has no token for is written as its number, for example `<\|100289\|>`; when every id has a token the result equals `tokenizer.decode` (verified by `tests/test_generation.py`). |
+| `token_ids_to_text(token_ids, tokenizer)` | Removes the batch dimension and decodes with `decode_token_ids`. Expects a batch of one. |
 
 ### `generate_and_print_sample(model, tokenizer, device, start_context)`
 
@@ -84,7 +85,7 @@ The same top-k and temperature logic as `textgen_v2`, with three differences:
 
 The context size comes from `GPT_CONFIG_124M["context_length"]`, not from the model instance. The prompt is encoded with `allowed_special="all"`.
 
-The final `tokenizer.decode` raises `KeyError` if one of the sampled ids is among the 91 the tokenizer cannot decode; see [known issue 11](08-known-issues.md#11-sampling-an-id-the-tokenizer-cannot-decode-stops-the-run).
+The new ids are decoded with `decode_token_ids`, so one of the 91 ids the tokenizer has no token for appears in the response as its number; see [known issue 11](08-known-issues.md#11-sampling-an-id-the-tokenizer-cannot-decode-stopped-the-run-fixed).
 
 ### `run_cli()`
 

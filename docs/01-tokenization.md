@@ -88,7 +88,7 @@ Verified with tiktoken 0.14.0:
 
 The model config uses `vocab_size = 100352`, which is 75 more than `n_vocab`. See [04-model.md](04-model.md#the-config).
 
-`tokenizer.decode` raises `KeyError` for any of those 16 ids and for the 75 above `n_vocab`. The model can sample all 91; see [known issue 11](08-known-issues.md#11-sampling-an-id-the-tokenizer-cannot-decode-stops-the-run).
+`tokenizer.decode` raises `KeyError` for any of those 16 ids and for the 75 above `n_vocab`. The model can sample all 91. `decode_token_ids` in `src/mini_llm/generation.py` writes such an id as its number where `tokenizer.decode` would raise; see [known issue 11](08-known-issues.md#11-sampling-an-id-the-tokenizer-cannot-decode-stopped-the-run-fixed).
 
 ## How special tokens are handled across the repo
 

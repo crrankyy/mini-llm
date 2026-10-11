@@ -93,7 +93,7 @@ The modules under `src/mini_llm/` only define things; importing them prints noth
 uv run pytest
 ```
 
-Verified: `2 passed`. pytest is configured in `pyproject.toml` to collect from `tests/` only, because `study/` contains demo scripts named `test_*.py` that run at import.
+Verified: `5 passed`. pytest is configured in `pyproject.toml` to collect from `tests/` only, because `study/` contains demo scripts named `test_*.py` that run at import.
 
 ## Devices
 

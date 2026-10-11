@@ -54,7 +54,7 @@ After each batch, `tokens_seen` grows by `input_batch.numel()` and `global_step`
 Ep 1 (Step 000005) [2026-10-10 23:06:17]: Train loss 11.657, Val loss 11.665
 ```
 
-**At the end of every epoch** it prints a 50-token sample from `start_context` (see [06-inference.md](06-inference.md#generate_and_print_samplemodel-tokenizer-device-start_context)) and then saves a checkpoint. The order matters: if printing the sample fails, that epoch's checkpoint is not written. See [known issue 11](08-known-issues.md#11-sampling-an-id-the-tokenizer-cannot-decode-stops-the-run).
+**At the end of every epoch** it prints a 50-token sample from `start_context` (see [06-inference.md](06-inference.md#generate_and_print_samplemodel-tokenizer-device-start_context)) and then saves a checkpoint. The order matters: if printing the sample fails, that epoch's checkpoint is not written. The one known way for it to fail, a sampled id the tokenizer cannot decode, is fixed; see [known issue 11](08-known-issues.md#11-sampling-an-id-the-tokenizer-cannot-decode-stopped-the-run-fixed).
 
 There is no learning-rate schedule and no gradient accumulation. The learning rate is whatever the optimizer was built with.
 
@@ -84,6 +84,13 @@ Written to `checkpoint_dir` as `gpt_wikitext_checkpoint_ep{N}.pth`, where `N` is
 
 The starting loss was 11.66, close to the 11.5 that a model guessing uniformly over the vocabulary would score.
 
+A second set of runs forced the CPU, where the script compiles the model, and shared one checkpoint folder. `torch.compile` was switched to its `eager` backend, which still returns the `OptimizedModule` wrapper; the code its default backend generates hangs on the machine these docs were checked on.
+
+- A first run was killed in the middle of epoch 3. It left `ep1` and `ep2`.
+- A second run resumed from `ep2` into the compiled model, with every weight tensor and the whole optimizer state equal to the checkpoint. It was interrupted in epoch 4 and left `ep3`, the interrupted checkpoint and the final-weights file.
+- A third run resumed from `ep3`, not from the interrupted checkpoint, and wrote `ep4` and `ep5`.
+- `generate.py` loaded both the final weights and `ep3`.
+
 ## `train_tiny.py`
 
 `scripts/train_tiny.py` is a module-level script. It was run for these docs only with the shrunken model described above, because as written it trains the full 239M-parameter model. In order, it:
@@ -109,7 +116,7 @@ It leaves ten `gpt_wikitext_checkpoint_ep*.pth` files in `checkpoints/tiny`, abo
 
 ## `train_wikitext.py`
 
-`scripts/train_wikitext.py` is a module-level script. It was run end to end only as described under [Verified run](#verified-run): not at full size, not with `torch.compile`, and not on CUDA. On macOS it cannot run as written; see [known issue 12](08-known-issues.md#12-train_wikitextpy-cannot-start-its-dataloader-workers-on-macos).
+`scripts/train_wikitext.py` is a module-level script. It was run end to end only as described under [Verified run](#verified-run): not at full size, not on CUDA, and with `torch.compile` only through its `eager` backend. On macOS it cannot run as written; see [known issue 12](08-known-issues.md#12-train_wikitextpy-cannot-start-its-dataloader-workers-on-macos).
 
 ```sh
 uv run python scripts/train_wikitext.py                          # checkpoints/ under the working directory
@@ -122,13 +129,13 @@ In order, it:
 2. Picks the device with `get_device()`. Seeds with 123, builds the model, moves it to the device, prints its size.
 3. Sets `data_dir = "data/wikitext-103"`. If `/content` exists, which is how it detects Colab, it copies that folder to `/content/data/wikitext-103` once and reads from there.
 4. Builds the memory-mapped loaders and prints their batch counts.
-5. Unless the device is MPS, calls `torch.compile(model)` inside a `try`; if that raises, it prints a message and continues uncompiled.
-6. Builds `AdamW(lr=5e-4, weight_decay=0.1)`.
-7. Looks in the checkpoint folder for a checkpoint to resume from.
+5. Builds `AdamW(lr=5e-4, weight_decay=0.1)`.
+6. Looks in the checkpoint folder for a checkpoint to resume from, and loads it.
+7. Unless the device is MPS, calls `torch.compile(model)` inside a `try`; if that raises, it prints a message and continues uncompiled.
 8. Trains the remaining epochs, or prints that training is already complete.
 9. Saves the final weights into the checkpoint folder.
 
-Compilation is skipped on MPS because there `torch.compile` returns without error and the first forward pass then fails with `Device mps not supported` (verified on torch 2.2.2), outside the `try`.
+Compilation is skipped on MPS because there `torch.compile` returns without error and the first forward pass then fails with `Device mps not supported` (verified on torch 2.2.2), outside the `try`. It comes after the resume because the compiled wrapper cannot load the checkpoint; see [Resume](#resume).
 
 | Setting | Value |
 |---|---|
@@ -140,7 +147,7 @@ Compilation is skipped on MPS because there `torch.compile` returns without erro
 | `eval_frq` / `eval_iter` | 500 / 10 |
 | Sample prompt | "The secret to training large models is" |
 
-The number of batches per epoch depends on the size of `train.bin`, which was not generated here.
+With the real `train.bin` of 120,196,189 tokens, the training loader has 29,344 batches per epoch and the validation loader 62 (verified by building both loaders). Five epochs are 146,720 steps, about 601 million tokens.
 
 ### Resume
 
@@ -156,11 +163,12 @@ if checkpoints:
     start_epoch = checkpoint['epoch']
 ```
 
-`torch.compile` wraps the model in an `OptimizedModule` whose state-dict keys start with `_orig_mod.`. The code strips that prefix before loading.
+`torch.compile` wraps the model in an `OptimizedModule` whose state-dict keys start with `_orig_mod.`, so a checkpoint saved from a compiled model carries that prefix. The code strips it and loads the result into the plain model, which is compiled only afterwards. Loading into the wrapper fails; that was [known issue 2](08-known-issues.md#2-resuming-into-a-compiled-model-failed-fixed).
 
 - **Granularity is one epoch.** Training restarts at the beginning of the first unfinished epoch.
 - **The latest file is chosen by string sort.** `ep10` sorts before `ep2`, so this picks the wrong file once there are ten or more. With `num_epochs = 5` that does not happen.
-- **Loading into a compiled model fails.** By the time the checkpoint is loaded, `model` is already the compiled wrapper, which expects the prefix that was just stripped. Verified on torch 2.2.2: `load_state_dict` raises `RuntimeError` listing every `_orig_mod.*` key as missing. The same stripped dict loads into an uncompiled model. Resume therefore works only when the model was not compiled. Not checked on the torch version Colab installs. See [known issue 2](08-known-issues.md#2-resuming-into-a-compiled-model-fails).
+- **A run with a compiled model can be resumed.** Verified on torch 2.2.2 as described under [Verified run](#verified-run). Not checked on the torch version Colab installs.
+- **A checkpoint that was cut off stops the run.** The newest file is loaded with no fallback. Verified by truncating the newest checkpoint: the next run stopped with `RuntimeError: PytorchStreamReader failed reading zip archive` and left the older checkpoints alone. Deleting the damaged file lets the run resume from the one before it.
 
 ### Interrupt and final save
 
@@ -207,4 +215,10 @@ To sample from a checkpoint locally, download it from Drive into `checkpoints/` 
 
 Verified locally: the clone cell against the real repository with a valid and an invalid token; the start, status and stop cells against a stand-in script that forks two workers; and the progress cell against a log written by the real trainer, where it parsed 138 of 138 evaluation lines. **Not run:** the notebook on Colab itself, so the GPU check, the Drive mount, the install and the data preparation are untested there.
 
-Two limits to know before a long run, both in [08-known-issues.md](08-known-issues.md): a new session cannot resume from a checkpoint if the model was compiled (issue 2), and a checkpoint is written only at the end of an epoch.
+### Across sessions
+
+A new session resumes from the newest epoch checkpoint on Drive. Three limits to know before a long run:
+
+- **Only finished epochs are kept.** A checkpoint is written at the end of an epoch, so whatever a session trained after its last finished epoch is lost when the session ends. The stop cell does not change that: the file it makes the script save is not one a later run resumes from ([known issue 3](08-known-issues.md#3-the-interrupt-checkpoint-is-never-resumed-and-final-weights-are-saved-regardless)). An epoch, 29,344 steps, therefore has to fit inside one session. How long a step takes on a Colab GPU was not measured; the log gets a time-stamped line every 500 steps, so the first minutes of a run show it.
+- **Space on Drive.** Five checkpoints of 2.88 GB and the 957 MB of final weights come to about 15.4 GB, and using the stop cell adds one more file the size of a checkpoint.
+- **A checkpoint that was cut off** while it was being written stops the next session until the file is deleted; see [Resume](#resume).
