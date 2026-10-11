@@ -8,7 +8,7 @@ A GPT-style, decoder-only language model written from scratch in PyTorch. The re
 
 ## Snapshot
 
-These docs were written on 2026-10-10 against commit `0bb727c` and updated on 2026-10-11 for the causal-mask fix, for the reorganization into `src/mini_llm/`, `scripts/` and `study/`, for the fixes to known issues 2 and 11, and for the rolling checkpoint. Paths and line numbers refer to the layout after the reorganization.
+These docs were written on 2026-10-10 against commit `0bb727c` and updated on 2026-10-11 for the causal-mask fix, for the reorganization into `src/mini_llm/`, `scripts/` and `study/`, for the fixes to known issues 2 and 11, for the rolling checkpoint, and for the FineWeb training data. Paths and line numbers refer to the layout after the reorganization.
 
 Where a page says **verified**, the behaviour was checked by running the code with Python 3.10.20, torch 2.2.2, tiktoken 0.14.0 and numpy 1.26.4, on CPU unless the page says otherwise.
 
@@ -18,6 +18,7 @@ What was run, and how:
 - **`train_wikitext.py` with a compiled model**: on CPU with the shrunken config and `torch.compile`'s `eager` backend, as five runs sharing one checkpoint folder: one killed inside an epoch, one interrupted, one killed in the middle of a save, one run to the end, and one that found nothing left to do.
 - **`generate.py` at full size**: on MPS, from a 2.88 GB checkpoint with random weights.
 - **`prepare_wikitext.py`**: with the download replaced by a few lines of text, and once with the real download.
+- **`prepare_fineweb.py`**: for real, at its default size of 1 billion tokens.
 
 The following were **not run**: training at full size, anything on CUDA, `torch.compile` with its default backend, and the cells of `train_colab.ipynb` that need Colab. Statements about those come from reading the code.
 
@@ -43,7 +44,7 @@ The following were **not run**: training at full size, anything on CUDA, `torch.
 
 ```mermaid
 flowchart TD
-    A[scripts/prepare_wikitext.py] -->|uint32 token streams| B["data/wikitext-103/train.bin<br/>data/wikitext-103/validation.bin"]
+    A[scripts/prepare_fineweb.py] -->|uint32 token streams| B["data/fineweb-mix/train.bin<br/>data/fineweb-mix/validation.bin"]
     B --> C[scripts/train_wikitext.py]
     C -->|MemMapDataset, batch 16 x 256 tokens| D[GPTModel]
     D -->|train_model_v1| E["checkpoints/gpt_wikitext_checkpoint_ep{N}.pth<br/>one per epoch"]
@@ -53,7 +54,7 @@ flowchart TD
     G --> H[Interactive prompt, sampled continuation]
 ```
 
-`train_tiny.py` is a smaller version of the same loop: it trains the same model on `data/basic-data.txt` using the in-memory `CustomDataset`. `train_colab.ipynb` runs the first two scripts on a Colab GPU, with `checkpoints/` replaced by a folder on Google Drive.
+`train_tiny.py` is a smaller version of the same loop: it trains the same model on `data/basic-data.txt` using the in-memory `CustomDataset`. `prepare_wikitext.py` writes the same kind of files from the much smaller WikiText-103. `train_colab.ipynb` runs the first two scripts on a Colab GPU, with `checkpoints/` replaced by a folder on Google Drive.
 
 ## Repository map
 
@@ -68,6 +69,7 @@ mini-llm/
 │   └── mini_llm/              the library
 │       ├── config.py          GPT_CONFIG_124M, the one model config
 │       ├── device.py          get_device(): cuda, then mps, then cpu
+│       ├── corpus.py          turns streams of documents into token files
 │       ├── data.py            in-memory and memory-mapped datasets
 │       ├── generation.py      greedy and sampled generation, token helpers
 │       ├── model/
@@ -81,7 +83,8 @@ mini-llm/
 │           ├── checkpoint.py  checkpoint files: rolling saves, resume, pruning
 │           └── trainer.py     the training loop
 ├── scripts/
-│   ├── prepare_wikitext.py    download + tokenize WikiText-103 into .bin files
+│   ├── prepare_fineweb.py     download + tokenize the FineWeb mix into .bin files
+│   ├── prepare_wikitext.py    the same for the much smaller WikiText-103
 │   ├── train_wikitext.py      main training script (GPU, resume, torch.compile)
 │   ├── train_tiny.py          smoke test + 10-epoch training on basic-data.txt
 │   └── generate.py            load weights, interactive generation
@@ -93,6 +96,7 @@ mini-llm/
 ├── tests/
 │   ├── test_causal_mask.py    a position must not see later tokens
 │   ├── test_checkpoint.py     a stopped run resumes and ends with the same weights
+│   ├── test_corpus.py         the prepared token files hold what they should
 │   └── test_generation.py     sampled ids without a token still decode
 ├── data/
 │   └── basic-data.txt         20,480-character short story used by the study scripts
@@ -115,6 +119,7 @@ Paths are relative to `src/mini_llm/`. Imports are absolute, for example `from m
 | `model/block.py` | `TransformerBlock` | `model/gpt.py`, `study/p04_gpt/architecture.py` |
 | `model/attention.py` | `MultiHeadedAttention` | `model/block.py`, the tests |
 | `model/layers.py` | `LayerNorm`, `GELU`, `FeedForward` | `model/gpt.py`, `model/block.py`, `study/p04_gpt/architecture.py` |
+| `corpus.py` | `prepare_corpus`, `write_manifest`, `read_manifest`, and the helpers `take_from_file`, `encode_documents`, `encode_batch` | `prepare_fineweb.py` |
 | `data.py` | `CustomDataset`, `create_dataloader`, `MemMapDataset`, `ResumableSampler`, `create_memmap_dataloader` | `training/trainer.py`, `train_tiny.py`, `train_wikitext.py` |
 | `training/loss.py` | `calc_loss_batch`, `calc_loss_loader` | `training/trainer.py`, `training/evaluate.py`, `train_tiny.py` |
 | `training/evaluate.py` | `evaluate_model` | `training/trainer.py` |
@@ -128,6 +133,7 @@ Paths are relative to `src/mini_llm/`. Imports are absolute, for example `from m
 
 | File | What it does | Page |
 |---|---|---|
+| `scripts/prepare_fineweb.py` | Tokenizes a mix of FineWeb-Edu and FineWeb into `data/fineweb-mix/{train,validation}.bin` | [02](02-data-pipeline.md#preparing-the-fineweb-mix) |
 | `scripts/prepare_wikitext.py` | Tokenizes WikiText-103 into `data/wikitext-103/{train,validation}.bin` | [02](02-data-pipeline.md#preparing-wikitext-103) |
 | `scripts/train_wikitext.py` | Trains on those files, with resume and checkpoints | [05](05-training.md#train_wikitextpy) |
 | `scripts/train_tiny.py` | Counts parameters, generates from the untrained model, trains on `basic-data.txt` | [05](05-training.md#train_tinypy) |
@@ -157,13 +163,14 @@ Standalone demos. The library does not import any of them.
 |---|---|
 | `tests/test_causal_mask.py` | Changing one token, or one input vector, leaves every earlier output of `GPTModel` and `MultiHeadedAttention` unchanged. Both tests fail if the mask stops being applied (verified). |
 | `tests/test_checkpoint.py` | The sampler's order depends only on seed and epoch and can be continued from a position. The rolling files are written in turn and never start with the file resumed from. Resume takes the newest file it can read and refuses to start over when none can be read. Pruning keeps the newest epoch checkpoints by number. A run interrupted, or stopped by an error, inside an epoch or at the end of one ends after its resume with weights bit-identical to an uninterrupted run. |
+| `tests/test_corpus.py` | Every document ends with the end-of-text token and decodes back; that token written inside a page stays ordinary text; each source gets its share, spread over all of its files; validation documents come from every file, are shuffled and are never trained on; a document that appears twice is used once; two runs write identical files; the manifest marks only a finished run. Each property was checked by breaking it (verified). |
 | `tests/test_generation.py` | `decode_token_ids` returns what `tokenizer.decode` returns when every id has a token, writes an id without a token as its number, and lets the trainer's end-of-epoch sample print when the model emits such an id. The last two fail if the old decode is put back (verified). |
 
 ### Other
 
 | Path | Notes |
 |---|---|
-| `pyproject.toml` | Dependencies, the `data` extra for `prepare_wikitext.py`, the `dev` group with pytest, and the Intel-Mac pins. See [07-running.md](07-running.md#setup). |
+| `pyproject.toml` | Dependencies, the `data` extra for the prepare scripts, the `dev` group with pytest, and the Intel-Mac pins. See [07-running.md](07-running.md#setup). |
 | `data/basic-data.txt` | 20,480 characters, 164 lines, plain ASCII. The file has no title; the text is recognizable as Edith Wharton's short story "The Verdict". |
 | `.gitignore` | Ignores virtualenvs, bytecode, `.gemini/`, `GEMINI.md`, `graphify-out/`, editor folders, `.DS_Store`, `token.txt`, and the generated `checkpoints/`, `*.pth` and `data/wikitext-103/`. |
 

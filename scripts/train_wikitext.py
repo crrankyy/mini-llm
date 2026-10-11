@@ -14,7 +14,15 @@ from mini_llm.training.checkpoint import load_latest_checkpoint, training_progre
 from mini_llm.config import GPT_CONFIG_124M
 from mini_llm.device import get_device
 
-parser = argparse.ArgumentParser(description="Train the GPT model on WikiText-103.")
+parser = argparse.ArgumentParser(description="Train the GPT model on prepared token files.")
+parser.add_argument(
+    "--data-dir", default="data/wikitext-103",
+    help="folder holding train.bin and validation.bin, as the prepare scripts write them"
+)
+parser.add_argument(
+    "--epochs", type=int, default=5,
+    help="passes over the training data in total, counting the ones earlier runs completed"
+)
 parser.add_argument(
     "--checkpoint-dir", default="checkpoints",
     help="where checkpoints and the final weights are written, and where a resume looks for them"
@@ -28,8 +36,8 @@ parser.add_argument(
     help="how many end-of-epoch checkpoints to keep; older ones are deleted"
 )
 args = parser.parse_args()
-if args.save_every < 1 or args.keep_checkpoints < 1:
-    parser.error("--save-every and --keep-checkpoints must be at least 1")
+if args.save_every < 1 or args.keep_checkpoints < 1 or args.epochs < 1:
+    parser.error("--save-every, --keep-checkpoints and --epochs must be at least 1")
 checkpoint_dir = args.checkpoint_dir
 
 # Use GPU if available
@@ -56,9 +64,11 @@ print("-" * 100)
 
 import os
 
-data_dir = "data/wikitext-103"
-if os.path.exists("/content"):
-    local_data_dir = "/content/data/wikitext-103"
+data_dir = args.data_dir
+# data kept on Google Drive is copied to the Colab machine's own disk first;
+# data that is already on that disk is read where it is
+if os.path.realpath(data_dir).startswith("/content/drive/"):
+    local_data_dir = os.path.join("/content/data", os.path.basename(os.path.normpath(data_dir)))
     if not os.path.exists(local_data_dir):
         print("Moving data to local Colab SSD for faster reading (this takes a minute)...")
         import shutil
@@ -106,7 +116,7 @@ optimizer = torch.optim.AdamW(
     lr=5e-4, weight_decay=0.1
 )
 
-num_epochs = 5 # Total number of epochs you want to train for
+num_epochs = args.epochs # Total number of epochs you want to train for
 
 start_epoch = 0
 resume = None

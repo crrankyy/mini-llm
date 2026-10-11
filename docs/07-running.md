@@ -8,8 +8,9 @@ Dependencies are declared in `pyproject.toml`, and `uv.lock` records the version
 |---|---|---|
 | `torch` | everything except the stage 1 regex tokenizers | dependency |
 | `tiktoken` | every script that tokenizes with `cl100k_base` | dependency |
-| `numpy` | `src/mini_llm/data.py`, `scripts/prepare_wikitext.py` | dependency |
-| `datasets`, `tqdm` | `scripts/prepare_wikitext.py` only | the `data` extra |
+| `numpy` | `src/mini_llm/data.py`, `src/mini_llm/corpus.py`, `scripts/prepare_wikitext.py` | dependency |
+| `datasets` | `scripts/prepare_fineweb.py`, `scripts/prepare_wikitext.py` | the `data` extra |
+| `tqdm` | `scripts/prepare_wikitext.py` | the `data` extra |
 | `pytest` | the tests | the `dev` group |
 
 ```sh
@@ -44,13 +45,19 @@ Imports no longer depend on the working directory: once the package is installed
 ## Main workflow
 
 ```sh
-uv run python scripts/prepare_wikitext.py    # downloads WikiText-103, writes data/wikitext-103/*.bin
-uv run python scripts/train_wikitext.py      # trains, checkpoints every 2,000 steps, resumes if checkpoints exist
+uv run python scripts/prepare_fineweb.py     # downloads and tokenizes 1 billion tokens into data/fineweb-mix/
+uv run python scripts/train_wikitext.py --data-dir data/fineweb-mix --epochs 1
+                                             # trains, checkpoints every 2,000 steps, resumes if checkpoints exist
 uv run python scripts/generate.py            # loads weights from checkpoints/, starts a prompt loop
 ```
 
+`scripts/prepare_wikitext.py` prepares the much smaller WikiText-103 into `data/wikitext-103/`, which is where `train_wikitext.py` looks when `--data-dir` is not given.
+
 | Option | Script | Effect |
 |---|---|---|
+| `--tokens N`, `--validation-tokens N`, `--edu-share X`, `--output-dir DIR` | `prepare_fineweb.py` | how much to prepare, how much to hold out, the share from FineWeb-Edu, and where to write (defaults: 1,000,000,000; 1,000,000; 0.5; `data/fineweb-mix`) |
+| `--data-dir DIR` | `train_wikitext.py` | read `train.bin` and `validation.bin` from `DIR` (default `data/wikitext-103`) |
+| `--epochs N` | `train_wikitext.py` | passes over the training data in total, across resumes (default 5) |
 | `--checkpoint-dir DIR` | `train_wikitext.py` | write checkpoints and final weights to `DIR`, and resume from there |
 | `--save-every N` | `train_wikitext.py` | save the rolling checkpoint every `N` training steps (default 2000) |
 | `--keep-checkpoints N` | `train_wikitext.py` | keep the newest `N` end-of-epoch checkpoints and delete older ones (default 10) |
@@ -120,12 +127,13 @@ So MPS is worth having for `generate.py`, and that machine cannot train the full
 
 | Path | Written by | Contents | In `.gitignore` |
 |---|---|---|---|
+| `data/fineweb-mix/train.bin`, `validation.bin`, `manifest.json` | `prepare_fineweb.py` | flat `uint32` token ids, 4 bytes each, no header, with token 100,257 after every document; the manifest records what was prepared | yes |
 | `data/wikitext-103/train.bin`, `validation.bin` | `prepare_wikitext.py` | flat `uint32` token ids, 4 bytes each, no header | yes |
 | `checkpoints/gpt_wikitext_checkpoint_latest_a.pth`, `..._latest_b.pth` | the trainer, called by `train_wikitext.py` | the rolling checkpoint, two files written in turn. Dict: `epoch`, `batches_done`, `model_state_dict`, `optimizer_state_dict`, `scaler_state_dict`, `global_step`, `tokens_seen` | yes |
 | `checkpoints/gpt_wikitext_checkpoint_ep{N}.pth` | the trainer, called by `train_wikitext.py` | the same dict at the end of epoch `N`; the newest 10 are kept | yes |
 | `checkpoints/tiny/gpt_wikitext_checkpoint_ep{N}.pth` | the trainer, called by `train_tiny.py` | the same dict | yes |
 | `checkpoints/gpt_wikitext_124M.pth` | `train_wikitext.py` at exit | bare state dict; keys prefixed `_orig_mod.` if the model was compiled | yes |
-| `/content/data/wikitext-103/` | `train_wikitext.py` on Colab | copy of the `.bin` files | outside the repo |
+| `/content/data/<folder name>/` | `train_wikitext.py` on Colab, only when the data folder is on Google Drive | copy of the `.bin` files | outside the repo |
 | `.venv/` | `uv sync` | the project environment | yes |
 | `__pycache__/` | Python | bytecode | yes |
 
