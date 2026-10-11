@@ -71,9 +71,12 @@ def training_progress(checkpoint, path):
         # before gradients were accumulated, every batch was one update
         "updates_done": checkpoint.get("updates_done", global_step + 1),
         "scaler_state_dict": checkpoint.get("scaler_state_dict"),
+        # None in checkpoints written while the batch size was fixed in the script
+        "batch_size": checkpoint.get("batch_size"),
     }
 
-def checkpoint_state(model, optimizer, scaler, epoch, batches_done, global_step, tokens_seen, updates_done):
+def checkpoint_state(model, optimizer, scaler, epoch, batches_done, global_step, tokens_seen, updates_done,
+                     batch_size):
 
     return {
         'epoch': epoch,
@@ -83,7 +86,9 @@ def checkpoint_state(model, optimizer, scaler, epoch, batches_done, global_step,
         'scaler_state_dict': scaler.state_dict() if scaler is not None else None,
         'global_step': global_step,
         'tokens_seen': tokens_seen,
-        'updates_done': updates_done
+        'updates_done': updates_done,
+        # the unit batches_done is counted in
+        'batch_size': batch_size
     }
 
 def rolling_write_order(checkpoint_dir, resumed_from=None):

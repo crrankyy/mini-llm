@@ -27,6 +27,15 @@ def train_model_v1(model, train_loader, val_loader,
     scaler = torch.cuda.amp.GradScaler() if device_type == 'cuda' else None
 
     if resume is not None:
+        # batches_done counts batches of the size the stopped run used. Read with another
+        # size, the same count points at a different place in the epoch, and the run would
+        # skip part of the data or go over part of it twice
+        if resume["batch_size"] not in (None, train_loader.batch_size):
+            raise ValueError(
+                f"The checkpoint was written with a batch size of {resume['batch_size']}, and this run "
+                f"uses {train_loader.batch_size}. Continue with the same batch size, or start a new run "
+                "in another checkpoint folder."
+            )
         tokens_seen, global_step = resume["tokens_seen"], resume["global_step"]
         batches_done, updates_done = resume["batches_done"], resume["updates_done"]
         if scaler is not None and resume["scaler_state_dict"] is not None:
@@ -123,7 +132,7 @@ def train_model_v1(model, train_loader, val_loader,
                 if save_frq is not None and (global_step + 1) // save_frq > first_step // save_frq:
                     rolling_saves = save_rolling_checkpoint(
                         checkpoint_state(model, optimizer, scaler, completed_epochs, batches_done,
-                                         global_step, tokens_seen, updates_done),
+                                         global_step, tokens_seen, updates_done, train_loader.batch_size),
                         rolling_order, rolling_saves
                     )
 
@@ -133,7 +142,8 @@ def train_model_v1(model, train_loader, val_loader,
 
             checkpoint_path = epoch_checkpoint_path(checkpoint_dir, epoch + 1)
             torch.save(
-                checkpoint_state(model, optimizer, scaler, epoch + 1, 0, global_step, tokens_seen, updates_done),
+                checkpoint_state(model, optimizer, scaler, epoch + 1, 0, global_step, tokens_seen, updates_done,
+                                 train_loader.batch_size),
                 checkpoint_path
             )
             print(f"--> Saved checkpoint: {checkpoint_path}")
@@ -146,7 +156,7 @@ def train_model_v1(model, train_loader, val_loader,
             if save_frq is not None:
                 rolling_saves = save_rolling_checkpoint(
                     checkpoint_state(model, optimizer, scaler, completed_epochs, batches_done,
-                                     global_step, tokens_seen, updates_done),
+                                     global_step, tokens_seen, updates_done, train_loader.batch_size),
                     rolling_order, rolling_saves
                 )
 
@@ -155,7 +165,7 @@ def train_model_v1(model, train_loader, val_loader,
             print("\n[!] Interrupted. Saving the current position...")
             save_rolling_checkpoint(
                 checkpoint_state(model, optimizer, scaler, completed_epochs, batches_done,
-                                 global_step, tokens_seen, updates_done),
+                                 global_step, tokens_seen, updates_done, train_loader.batch_size),
                 rolling_order, rolling_saves
             )
         raise

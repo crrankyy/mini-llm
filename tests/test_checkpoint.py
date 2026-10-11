@@ -150,7 +150,7 @@ def rising_rate(update):
     return 1e-3 * (update + 1)
 
 
-def train(token_file, checkpoint_dir, accumulate=1):
+def train(token_file, checkpoint_dir, accumulate=1, batch_size=BATCH_SIZE):
     """One run of the trainer, started the way scripts/train_wikitext.py starts it."""
     torch.manual_seed(0)
     model = GPTModel(CONFIG)
@@ -158,7 +158,7 @@ def train(token_file, checkpoint_dir, accumulate=1):
 
     def loader(**kwargs):
         return create_memmap_dataloader(
-            bin_file_path=token_file, batch_size=BATCH_SIZE, max_length=CONFIG["context_length"],
+            bin_file_path=token_file, batch_size=batch_size, max_length=CONFIG["context_length"],
             stride=CONFIG["context_length"], drop_last=True, **kwargs
         )
 
@@ -252,6 +252,45 @@ def test_an_interrupt_after_the_last_batch_of_an_epoch_repeats_only_the_end_of_e
 
     assert_same_weights(resumed, uninterrupted)
     assert len(epoch_checkpoint_paths(checkpoint_dir)) == EPOCHS
+
+
+def stopped_run(token_file, checkpoint_dir, monkeypatch):
+    stop_at_step(monkeypatch, 7, KeyboardInterrupt())
+    with pytest.raises(KeyboardInterrupt):
+        train(token_file, checkpoint_dir)
+    monkeypatch.undo()
+
+
+def test_a_resume_with_another_batch_size_is_refused_and_changes_no_file(tmp_path, monkeypatch):
+    token_file = make_token_file(tmp_path)
+    checkpoint_dir = os.path.join(tmp_path, "stopped")
+    stopped_run(token_file, checkpoint_dir, monkeypatch)
+
+    def files():
+        return {name: open(os.path.join(checkpoint_dir, name), "rb").read() for name in os.listdir(checkpoint_dir)}
+
+    before = files()
+
+    # 7 batches of 4 are done; counted in batches of 2, the run would go over half of them again
+    with pytest.raises(ValueError, match=f"batch size of {BATCH_SIZE}, and this run uses {BATCH_SIZE // 2}"):
+        train(token_file, checkpoint_dir, batch_size=BATCH_SIZE // 2)
+
+    assert files() == before
+
+
+def test_a_checkpoint_that_does_not_record_its_batch_size_still_resumes(tmp_path, monkeypatch):
+    token_file = make_token_file(tmp_path)
+    uninterrupted = train(token_file, os.path.join(tmp_path, "uninterrupted"))
+
+    checkpoint_dir = os.path.join(tmp_path, "stopped")
+    stopped_run(token_file, checkpoint_dir, monkeypatch)
+    # rewritten oldest first, so that the newest file is still the newest afterwards
+    for path in reversed(resume_candidates(checkpoint_dir)):
+        checkpoint = torch.load(path, weights_only=False)
+        del checkpoint["batch_size"]
+        torch.save(checkpoint, path)
+
+    assert_same_weights(train(token_file, checkpoint_dir), uninterrupted)
 
 
 def test_accumulated_batches_make_the_update_that_one_large_batch_makes(tmp_path):
