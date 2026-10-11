@@ -12,6 +12,7 @@ from mini_llm.training.loss import calc_loss_loader
 from mini_llm.training.trainer import train_model_v1
 from mini_llm.training.checkpoint import load_latest_checkpoint, training_progress
 from mini_llm.training.schedule import learning_rate_at
+from mini_llm.training.optimizer import create_optimizer
 
 from mini_llm.config import GPT_CONFIG_124M
 from mini_llm.device import get_device
@@ -127,10 +128,7 @@ val_dataloader = create_memmap_dataloader(
 print("Train loader initialized. Number of batches:", len(train_dataloader))
 print("Val loader initialized. Number of batches:", len(val_dataloader))
 
-optimizer = torch.optim.AdamW(
-    model.parameters(),
-    lr=args.lr, weight_decay=0.1
-)
+optimizer = create_optimizer(model, lr=args.lr, weight_decay=0.1)
 
 num_epochs = args.epochs # Total number of epochs you want to train for
 

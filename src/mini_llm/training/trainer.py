@@ -78,8 +78,10 @@ def train_model_v1(model, train_loader, val_loader,
                     continue
 
                 if lr_schedule is not None:
+                    # asked once per update, whatever the number of parameter groups
+                    learning_rate = lr_schedule(updates_done)
                     for param_group in optimizer.param_groups:
-                        param_group["lr"] = lr_schedule(updates_done)
+                        param_group["lr"] = learning_rate
 
                 if device_type == 'cuda':
                     scaler.unscale_(optimizer)

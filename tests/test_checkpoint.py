@@ -13,6 +13,7 @@ from mini_llm.training.checkpoint import (
     prune_epoch_checkpoints, resume_candidates, rolling_paths, rolling_write_order,
     save_rolling_checkpoint, training_progress
 )
+from mini_llm.training.optimizer import create_optimizer
 
 CONFIG = {
     "vocab_size": 50,
@@ -153,7 +154,7 @@ def train(token_file, checkpoint_dir, accumulate=1):
     """One run of the trainer, started the way scripts/train_wikitext.py starts it."""
     torch.manual_seed(0)
     model = GPTModel(CONFIG)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-2, weight_decay=0.1)
+    optimizer = create_optimizer(model, lr=1e-2, weight_decay=0.1)
 
     def loader(**kwargs):
         return create_memmap_dataloader(
@@ -290,7 +291,7 @@ def test_the_schedule_is_asked_once_per_update_and_its_rate_is_the_one_used(tmp_
     torch.manual_seed(0)
     model = GPTModel(CONFIG)
     start = {name: tensor.clone() for name, tensor in model.state_dict().items()}
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-2, weight_decay=0.1)
+    optimizer = create_optimizer(model, lr=1e-2, weight_decay=0.1)
     asked = []
 
     def no_rate(update):
