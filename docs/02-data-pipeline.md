@@ -107,7 +107,7 @@ uv run python scripts/prepare_fineweb.py --tokens 100000000    # a smaller set
 
 FineWeb is not the raw web. It is still English only, de-duplicated and quality-filtered; FineWeb-Edu then keeps the roughly 8% of those pages that score as educational. The mix is there so that the model sees dense, clean text and also the web as people actually write it.
 
-Both sources are pinned to one revision in the script. A training run that is resumed in a new Colab session depends on the rebuilt files being the same as before.
+Both sources are pinned to one revision in the script, so building the files again gives the same files. A training run that is resumed in a new Colab session depends on the data being the same as before.
 
 ### What the script does
 
