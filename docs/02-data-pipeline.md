@@ -63,9 +63,19 @@ Each sample reads `max_length + 1` tokens and splits them into input and target.
 
 The sample count is conservative. In that check a third full window (tokens 512 to 768) would have fit, and 487 trailing tokens were never read. On a corpus-sized file this costs at most one window.
 
-### `create_memmap_dataloader(bin_file_path, batch_size=4, max_length=256, stride=128, shuffle=True, drop_last=True, num_workers=0)`
+### `ResumableSampler(num_samples, seed)`
+
+A sampler whose order can be rebuilt by a later run. `__iter__` seeds a generator with `seed + epoch`, draws one permutation of all the samples, and yields it from index `start` on. `set_position(epoch, start)` sets both; a new sampler is at epoch 0, start 0.
+
+Verified: two samplers with the same seed and epoch give the same order, another epoch gives a different one, and after `set_position(epoch=3, start=40)` the sampler yields exactly the tail of epoch 3's order from its 41st sample. A loader with two worker processes follows the same order as one without.
+
+The trainer uses it to continue an epoch that an earlier run did not finish; see [05-training.md](05-training.md#checkpoints).
+
+### `create_memmap_dataloader(bin_file_path, batch_size=4, max_length=256, stride=128, shuffle=True, drop_last=True, num_workers=0, seed=None)`
 
 The same wrapper for `MemMapDataset`. No tokenizer is involved, since the file already holds token ids.
+
+With `seed` set, the loader is built with a `ResumableSampler` and `shuffle` is ignored. With `seed=None` it shuffles, or not, as `shuffle` says.
 
 ## Preparing WikiText-103
 
@@ -90,8 +100,8 @@ Verified with the stand-in text: `train.bin` held exactly the ids the tokenizer 
 | Script | Loader | Source | `batch_size` | `max_length` | `stride` | Train `shuffle` / `drop_last` | `num_workers` |
 |---|---|---|---|---|---|---|---|
 | `train_tiny.py` | `create_dataloader` | `data/basic-data.txt`, split 90/10 by characters | 2 | 256 | 256 | yes / yes | 0 |
-| `train_wikitext.py` | `create_memmap_dataloader` | `data/wikitext-103/*.bin` | 16 | 256 | 256 | yes / yes | 2 |
+| `train_wikitext.py` | `create_memmap_dataloader` | `data/wikitext-103/*.bin` | 16 | 256 | 256 | seeded order per epoch / yes | 2 |
 
-Validation loaders in both scripts use `shuffle=False, drop_last=False`.
+Validation loaders in both scripts use `shuffle=False, drop_last=False`. `train_wikitext.py` builds a third loader over `train.bin` with `shuffle=True, drop_last=True`, from which evaluation draws its training batches.
 
 For `train_tiny.py` the numbers are (verified): 20,480 characters, split at character 18,432; 4,423 training tokens giving 17 windows and 8 batches; 522 validation tokens giving 2 windows and 1 batch.

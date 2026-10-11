@@ -14,7 +14,7 @@ This is a learning project, documented as it stands. Its known defects are descr
 |---|---|
 | `src/mini_llm/` | The library: `GPTModel` and its layers, dataloaders, the training loop, text generation, the model config |
 | `scripts/prepare_wikitext.py` | Downloads WikiText-103 and tokenizes it into binary files |
-| `scripts/train_wikitext.py` | Trains on those files, with per-epoch checkpoints and resume |
+| `scripts/train_wikitext.py` | Trains on those files, with a rolling checkpoint every 2,000 steps, per-epoch checkpoints and resume |
 | `scripts/generate.py` | Loads trained weights and starts a prompt loop |
 | `scripts/train_tiny.py` | Trains the same model on `data/basic-data.txt` |
 | `train_colab.ipynb` | Runs the preparation and the training on a Colab GPU |
@@ -58,13 +58,13 @@ Run the scripts from the repo root, because the data and checkpoint paths are re
 
 ```sh
 uv run python scripts/prepare_wikitext.py    # writes data/wikitext-103/train.bin and validation.bin
-uv run python scripts/train_wikitext.py      # checkpoints each epoch into checkpoints/
+uv run python scripts/train_wikitext.py      # checkpoints every 2,000 steps into checkpoints/
 uv run python scripts/generate.py            # interactive prompt
 uv run pytest
 ```
 
 - **Device.** The scripts use CUDA if it is available, then Apple's Metal backend (MPS), then the CPU.
-- **Checkpoints.** `train_wikitext.py --checkpoint-dir DIR` writes somewhere other than `checkpoints/`. `generate.py --weights FILE` loads one specific file.
+- **Checkpoints.** `train_wikitext.py --checkpoint-dir DIR` writes somewhere other than `checkpoints/`; `--save-every N` and `--keep-checkpoints N` set how often the rolling checkpoint is saved and how many per-epoch checkpoints are kept. A run that stops, for any reason, is continued by running the script again. `generate.py --weights FILE` loads one specific file.
 - **Colab.** `train_colab.ipynb` runs the preparation and the training on a Colab GPU and keeps the checkpoints on Google Drive. See [docs/05-training.md](docs/05-training.md#colab-notebook).
 
 `scripts/train_tiny.py` trains the full 239M-parameter model for 10 epochs and writes a checkpoint after each one, an estimated 29 GB in total. Read [docs/05-training.md](docs/05-training.md#train_tinypy) before running it.

@@ -60,7 +60,9 @@ uv run python scripts/generate.py --weights checkpoints/gpt_wikitext_checkpoint_
 
 ### `find_weights(checkpoint_dir)`
 
-Returns `gpt_wikitext_124M.pth` in that folder if it exists. Otherwise it returns the last entry of `sorted(glob.glob("gpt_wikitext_checkpoint_*.pth"))` in the folder, and if there is none it returns the path of the missing final weights, so that the loader reports it.
+Returns `gpt_wikitext_124M.pth` in that folder if it exists. Otherwise it returns the first file a training run would try to resume from: the rolling checkpoint that was modified more recently, or with no rolling file the end-of-epoch checkpoint with the highest number (see [05-training.md](05-training.md#resume)). If there is none of those either, it returns the path of the missing final weights, so that the loader reports it.
+
+Unlike the resume in `train_wikitext.py`, it does not go on to the next file when that one cannot be read.
 
 ### `load_model_weights(model, path, device)`
 
