@@ -41,7 +41,7 @@ def test_logits_do_not_depend_on_later_tokens():
 def test_attention_does_not_read_later_positions():
     torch.manual_seed(0)
     attention = MultiHeadedAttention(
-        d_in=16, d_out=16, context_length=8, dropout=0.0, num_heads=2
+        d_in=16, d_out=16, dropout=0.0, num_heads=2
     ).eval()
     x = torch.randn(1, 8, 16)
 

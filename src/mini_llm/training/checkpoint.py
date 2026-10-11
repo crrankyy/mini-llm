@@ -60,16 +60,20 @@ def load_latest_checkpoint(checkpoint_dir):
 
 def training_progress(checkpoint, path):
 
+    global_step = checkpoint.get("global_step", -1)
+
     # checkpoints written before the rolling files existed have only the first two keys
     return {
         "path": path,
         "batches_done": checkpoint.get("batches_done", 0),
-        "global_step": checkpoint.get("global_step", -1),
+        "global_step": global_step,
         "tokens_seen": checkpoint.get("tokens_seen", 0),
+        # before gradients were accumulated, every batch was one update
+        "updates_done": checkpoint.get("updates_done", global_step + 1),
         "scaler_state_dict": checkpoint.get("scaler_state_dict"),
     }
 
-def checkpoint_state(model, optimizer, scaler, epoch, batches_done, global_step, tokens_seen):
+def checkpoint_state(model, optimizer, scaler, epoch, batches_done, global_step, tokens_seen, updates_done):
 
     return {
         'epoch': epoch,
@@ -78,7 +82,8 @@ def checkpoint_state(model, optimizer, scaler, epoch, batches_done, global_step,
         'optimizer_state_dict': optimizer.state_dict(),
         'scaler_state_dict': scaler.state_dict() if scaler is not None else None,
         'global_step': global_step,
-        'tokens_seen': tokens_seen
+        'tokens_seen': tokens_seen,
+        'updates_done': updates_done
     }
 
 def rolling_write_order(checkpoint_dir, resumed_from=None):

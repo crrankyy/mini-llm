@@ -10,7 +10,7 @@ Stage 3 lives in `study/p03_attention/`. It goes from attention with no trainabl
 | `study/p03_attention/self_attention.py` | Demo script: the four classes, then scaled dot-product attention with query/key/value matrices step by step |
 | `src/mini_llm/model/attention.py` | `MultiHeadedAttention` on its own, importable without running a demo |
 
-`MultiHeadedAttention` in the library is an identical copy of the class in `self_attention.py`. The three earlier classes exist only in `self_attention.py`.
+`MultiHeadedAttention` in the library has the same layers as the class in `self_attention.py` and gives the same output from the same weights. It hands steps 4 to 7 of the forward pass below to a PyTorch function and stores no mask; see [The library version](#the-library-version). The three earlier classes exist only in `self_attention.py`.
 
 Both demo scripts work on one sentence, "The rivers danced under the moonlight as the stars whispered secrets to the sky.", which is 16 `cl100k_base` tokens, embedded with a seeded `nn.Embedding`.
 
@@ -50,7 +50,7 @@ Holds `num_heads` independent `SelfAttention_v2` modules in an `nn.ModuleList`, 
 
 ### `MultiHeadedAttention(d_in, d_out, context_length, dropout, num_heads, qkvbias=False)`
 
-The module `TransformerBlock` uses. All heads share one set of projection layers and are computed in a single batched matrix product. `d_out` must be divisible by `num_heads`; each head gets `head_dim = d_out // num_heads` dimensions.
+The class in `self_attention.py`, with every step written out. `TransformerBlock` uses the library version described after it. All heads share one set of projection layers and are computed in a single batched matrix product. `d_out` must be divisible by `num_heads`; each head gets `head_dim = d_out // num_heads` dimensions.
 
 Layers and buffers:
 
@@ -77,6 +77,27 @@ Forward pass, with shapes for the repo config (`D = 768`, `H = 12`, `head_dim = 
 
 The mask is sliced to `[:T, :T]`, so sequences shorter than `context_length` work.
 
+### The library version
+
+`MultiHeadedAttention(d_in, d_out, dropout, num_heads, qkvbias=False)` in `src/mini_llm/model/attention.py` has the same four `nn.Linear` layers under the same names. It differs in three ways:
+
+- **No `context_length` argument and no `mask` buffer.** Nothing about the mask is stored.
+- **`dropout` is the rate**, a plain number, not an `nn.Dropout` module.
+- **Steps 4 to 7 are one call:**
+
+```python
+context_vectors = F.scaled_dot_product_attention(
+    queries, keys, values, is_causal=True,
+    dropout_p=self.dropout if self.training else 0.0
+).transpose(1, 2)
+```
+
+`is_causal=True` asks for the mask of step 5. The function applies whatever dropout rate it is given, in training or not, so the rate is passed only while the module is in training mode.
+
+Verified on 2026-10-11: `tests/test_model.py` computes steps 4 to 7 by hand from the module's own weights and gets the module's output to within 1e-6. With the same weights loaded before and after the change, the full model's logits moved by at most 2.3e-6.
+
+The change is for speed. Together with the same change to `LayerNorm` and `GELU` (see [04-model.md](04-model.md#building-blocks-srcmini_llmmodellayerspy)), a training step of the full model at batch 2 x 256 took 12% less time on the Intel MacBook's CPU (3.33 s to 2.92 s, measured). It was not measured on a CUDA GPU.
+
 ## The causal mask
 
 Step 5 replaces every score above the diagonal with `-inf`, so softmax gives those positions a weight of zero and each token attends only to itself and the tokens before it. `masked_fill` returns a new tensor and leaves its input unchanged, which is why the result is assigned back.
@@ -85,8 +106,10 @@ Verified on 2026-10-11: in a small `GPTModel` in eval mode with dropout 0, chang
 
 Until that date the return value was discarded and the mask had no effect. Weights trained before the fix need retraining. See [08-known-issues.md](08-known-issues.md#1-the-causal-mask-was-never-applied-fixed).
 
-`SelfAttention_v2` masks differently: after softmax, by multiplication.
+The library version gets the same mask by passing `is_causal=True`, and the check above was repeated after that change. `SelfAttention_v2` masks differently: after softmax, by multiplication.
 
 ## What carries over into checkpoints
 
-Because `mask` is a registered buffer, each of the 12 blocks stores a `256 x 256` mask in the state dict. A saved model is therefore tied to its `context_length` twice: through the mask shape and through the positional embedding table.
+The library version registers no buffer, so a checkpoint holds nothing of the mask, and a saved model is tied to its `context_length` only through the positional embedding table.
+
+Until 2026-10-11 each of the 12 blocks stored a `256 x 256` mask in the state dict. `load_state_dict` refuses a checkpoint from then because of those entries (verified). The class in `self_attention.py` still registers its mask.

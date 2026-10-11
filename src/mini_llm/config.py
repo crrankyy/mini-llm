@@ -4,6 +4,6 @@ GPT_CONFIG_124M = {
     "embedding_dimension": 768, 
     "n_heads": 12, 
     "n_layers": 12, 
-    "drop_rate": 0.1, 
+    "drop_rate": 0.0, 
     "qkv_bias": False 
 }

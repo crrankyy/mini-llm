@@ -73,7 +73,7 @@ Unlike the resume in `train_wikitext.py`, it does not go on to the next file whe
 
 Verified against a checkpoint written by the trainer.
 
-`map_location=device` moves everything in the file to the device, including the optimizer state of a full checkpoint, which is then dropped. Verified on MPS with a 2.88 GB checkpoint of the full model whose keys carried the `_orig_mod.` prefix: it loaded and generated.
+`map_location=device` moves everything in the file to the device, including the optimizer state of a full checkpoint, which is then dropped. Verified on MPS with a 1.95 GB checkpoint of the full model whose keys carried the `_orig_mod.` prefix: it loaded and generated.
 
 `weights_only=False` means the file is unpickled without restriction, so it can execute code. Only load files you produced yourself.
 
@@ -103,7 +103,7 @@ Two consequences of the search in step 4, both avoided by passing `--weights`:
 - The fallback pattern `gpt_wikitext_checkpoint_*.pth` also matches `gpt_wikitext_checkpoint_interrupted.pth`, and that name sorts **after** every `..._ep{N}.pth` (verified). If both exist and the final weights file does not, the interrupted checkpoint is the one loaded.
 - `gpt_wikitext_124M.pth` is written by `train_wikitext.py` even after an interrupted run, so its presence does not mean training finished.
 
-Verified at full size on the Intel MacBook's GPU: loading the 2.88 GB checkpoint and generating 150 tokens took 63 seconds in total.
+Verified at full size on the Intel MacBook's GPU: loading the 1.95 GB checkpoint and generating 150 tokens took 53 seconds in total.
 
 Each prompt is independent. The banner calls it "Interactive Chat/Generation Mode", but there is no conversation history and no chat formatting: the model continues the text it is given.
 

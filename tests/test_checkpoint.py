@@ -144,7 +144,12 @@ def make_token_file(folder):
     return path
 
 
-def train(token_file, checkpoint_dir):
+def rising_rate(update):
+    # a different rate for every update: a resumed run that lost count of its updates would end elsewhere
+    return 1e-3 * (update + 1)
+
+
+def train(token_file, checkpoint_dir, accumulate=1):
     """One run of the trainer, started the way scripts/train_wikitext.py starts it."""
     torch.manual_seed(0)
     model = GPTModel(CONFIG)
@@ -169,7 +174,8 @@ def train(token_file, checkpoint_dir):
         num_epochs=EPOCHS - start_epoch, eval_frq=5, eval_iter=1,
         # "!" is token 0, which this small vocabulary contains
         start_context="!", tokenizer=tiktoken.get_encoding("cl100k_base"), start_epoch=start_epoch,
-        checkpoint_dir=checkpoint_dir, save_frq=SAVE_FRQ, resume=resume, eval_train_loader=loader(shuffle=True)
+        checkpoint_dir=checkpoint_dir, save_frq=SAVE_FRQ, resume=resume, eval_train_loader=loader(shuffle=True),
+        accumulate=accumulate, lr_schedule=rising_rate
     )
     return model
 
@@ -191,28 +197,33 @@ def assert_same_weights(model, expected):
         assert torch.equal(model.state_dict()[name], tensor), name
 
 
-# both stop inside the second epoch, between two regular saves. An interrupt saves the exact
-# position; a machine that disappears leaves the last regular save, the one after 8 steps
-@pytest.mark.parametrize("error, stopped_after, resumed_after", [
-    (KeyboardInterrupt(), 7, 7),
-    (MachineTakenAway(), 10, 2 * SAVE_FRQ),
+# all stop inside the second epoch, between two regular saves. An interrupt saves the exact
+# position; a machine that disappears leaves the last regular save, the one after 8 steps.
+# With two batches per update, the ninth batch has no update yet when the run stops: its
+# gradient is lost with the process, so the position saved is the one after 8 steps
+@pytest.mark.parametrize("error, stopped_after, resumed_after, accumulate", [
+    (KeyboardInterrupt(), 7, 7, 1),
+    (MachineTakenAway(), 10, 2 * SAVE_FRQ, 1),
+    (KeyboardInterrupt(), 9, 8, 2),
+    (MachineTakenAway(), 11, 2 * SAVE_FRQ, 2),
 ])
 def test_a_run_that_stops_inside_an_epoch_ends_with_the_same_weights(
-        tmp_path, monkeypatch, error, stopped_after, resumed_after):
+        tmp_path, monkeypatch, error, stopped_after, resumed_after, accumulate):
     token_file = make_token_file(tmp_path)
-    uninterrupted = train(token_file, os.path.join(tmp_path, "uninterrupted"))
+    uninterrupted = train(token_file, os.path.join(tmp_path, "uninterrupted"), accumulate)
 
     checkpoint_dir = os.path.join(tmp_path, "stopped")
     stop_at_step(monkeypatch, stopped_after, error)
     with pytest.raises(type(error)):
-        train(token_file, checkpoint_dir)
+        train(token_file, checkpoint_dir, accumulate)
     monkeypatch.undo()
 
     checkpoint, _ = load_latest_checkpoint(checkpoint_dir)
     assert checkpoint["global_step"] + 1 == resumed_after
     assert (checkpoint["epoch"], checkpoint["batches_done"]) == divmod(resumed_after, BATCHES_PER_EPOCH)
+    assert checkpoint["updates_done"] == resumed_after // accumulate
 
-    resumed = train(token_file, checkpoint_dir)
+    resumed = train(token_file, checkpoint_dir, accumulate)
 
     assert_same_weights(resumed, uninterrupted)
     assert len(resume_candidates(checkpoint_dir)) == 2 + EPOCHS
@@ -240,3 +251,66 @@ def test_an_interrupt_after_the_last_batch_of_an_epoch_repeats_only_the_end_of_e
 
     assert_same_weights(resumed, uninterrupted)
     assert len(epoch_checkpoint_paths(checkpoint_dir)) == EPOCHS
+
+
+def test_accumulated_batches_make_the_update_that_one_large_batch_makes(tmp_path):
+    token_file = make_token_file(tmp_path)
+
+    def run(batch_size, accumulate):
+        torch.manual_seed(0)
+        model = GPTModel(CONFIG)
+        # plain gradient descent, where the size of a gradient goes straight into the
+        # weights. Adam rescales every gradient and would hide one that is too large
+        optimizer = torch.optim.SGD(model.parameters(), lr=0.5)
+
+        def loader(**kwargs):
+            return create_memmap_dataloader(
+                bin_file_path=token_file, batch_size=batch_size, max_length=CONFIG["context_length"],
+                stride=CONFIG["context_length"], drop_last=False, **kwargs
+            )
+
+        trainer.train_model_v1(
+            model, loader(seed=123), loader(shuffle=False), optimizer, torch.device("cpu"),
+            num_epochs=1, eval_frq=100, eval_iter=1, start_context="!",
+            tokenizer=tiktoken.get_encoding("cl100k_base"),
+            checkpoint_dir=os.path.join(tmp_path, f"{batch_size}x{accumulate}"), accumulate=accumulate
+        )
+        return model
+
+    # 24 samples in the same order: five updates either way, the last from the 4 samples left over
+    large_batches = run(batch_size=5, accumulate=1)
+    accumulated = run(batch_size=1, accumulate=5)
+
+    for name, tensor in large_batches.state_dict().items():
+        assert torch.allclose(accumulated.state_dict()[name], tensor, atol=1e-6), name
+
+
+def test_the_schedule_is_asked_once_per_update_and_its_rate_is_the_one_used(tmp_path):
+    token_file = make_token_file(tmp_path)
+    torch.manual_seed(0)
+    model = GPTModel(CONFIG)
+    start = {name: tensor.clone() for name, tensor in model.state_dict().items()}
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-2, weight_decay=0.1)
+    asked = []
+
+    def no_rate(update):
+        asked.append(update)
+        return 0.0
+
+    def loader(**kwargs):
+        return create_memmap_dataloader(
+            bin_file_path=token_file, batch_size=BATCH_SIZE, max_length=CONFIG["context_length"],
+            stride=CONFIG["context_length"], drop_last=True, **kwargs
+        )
+
+    trainer.train_model_v1(
+        model, loader(seed=123), loader(shuffle=False), optimizer, torch.device("cpu"),
+        num_epochs=EPOCHS, eval_frq=100, eval_iter=1, start_context="!",
+        tokenizer=tiktoken.get_encoding("cl100k_base"), checkpoint_dir=os.path.join(tmp_path, "checkpoints"),
+        accumulate=4, lr_schedule=no_rate
+    )
+
+    # 6 batches an epoch, 4 to an update: one full update and one from the 2 batches left, twice
+    assert asked == [0, 1, 2, 3]
+    for name, tensor in model.state_dict().items():
+        assert torch.equal(tensor, start[name]), name
