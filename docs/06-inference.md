@@ -85,7 +85,7 @@ The same top-k and temperature logic as `textgen_v2`, with three differences:
 - **It returns only the new text** as a string. The prompt is not included (verified).
 - **It handles one sequence at a time**, because it calls `idx_next.item()`.
 
-The context size comes from `GPT_CONFIG_124M["context_length"]`, not from the model instance. The prompt is encoded with `allowed_special="all"`.
+The context size comes from `GPT_CONFIG_124M["context_length"]`, not from the model instance. The model is built from the same config, so a file written while the context was 256 tokens, before 2026-10-12, stops the script with `size mismatch for position_embedding.weight` (verified with the two files of the Colab run). The prompt is encoded with `allowed_special="all"`.
 
 The new ids are decoded with `decode_token_ids`, so one of the 91 ids the tokenizer has no token for appears in the response as its number; see [known issue 11](08-known-issues.md#11-sampling-an-id-the-tokenizer-cannot-decode-stopped-the-run-fixed).
 
@@ -103,7 +103,9 @@ Two consequences of the search in step 4, both avoided by passing `--weights`:
 - The fallback pattern `gpt_wikitext_checkpoint_*.pth` also matches `gpt_wikitext_checkpoint_interrupted.pth`, and that name sorts **after** every `..._ep{N}.pth` (verified). If both exist and the final weights file does not, the interrupted checkpoint is the one loaded.
 - `gpt_wikitext_124M.pth` is written by `train_wikitext.py` even after an interrupted run, so its presence does not mean training finished.
 
-Verified at full size on the Intel MacBook's GPU: loading the 1.95 GB checkpoint and generating 150 tokens took 53 seconds in total.
+Measured at full size on the Intel MacBook's GPU on 2026-10-12: loading the 1.95 GB checkpoint took 2 seconds, the first prompt after the start took 45 seconds for its 150 tokens, and each later prompt about 11.5 seconds, which is 13 tokens a second.
+
+The first prompt is slower because that GPU pays a one-off cost for every input length it has not been given since the script started, and the text grows by one token per pass. Timed with untrained weights at nine lengths from 16 to 1,024 tokens, the first pass at a length took 200 to 420 ms and the later ones 66 to 264 ms. Every new token is a pass over the whole text, so the speed also falls as the text grows: at lengths the GPU has already been given, 12 to 15 tokens a second while the text is up to 256 tokens long, 7 at 512 and 3.8 at 1,024. A first generation of 1,100 tokens from a 7-token prompt, where every pass is at a new length, took 1,125 seconds.
 
 Each prompt is independent. The banner calls it "Interactive Chat/Generation Mode", but there is no conversation history and no chat formatting: the model continues the text it is given.
 

@@ -61,6 +61,7 @@ uv run python scripts/generate.py            # loads weights from checkpoints/, 
 | `--checkpoint-dir DIR` | `train_wikitext.py` | write checkpoints and final weights to `DIR`, and resume from there |
 | `--save-every N` | `train_wikitext.py` | save the rolling checkpoint every `N` training steps (default 2000) |
 | `--keep-checkpoints N` | `train_wikitext.py` | keep the newest `N` end-of-epoch checkpoints and delete older ones (default 10) |
+| `--batch-size N` | `train_wikitext.py` | `N` windows of 1,024 tokens in one batch (default 4) |
 | `--accumulate N` | `train_wikitext.py` | add up the gradients of `N` batches for one weight update (default 16) |
 | `--lr X`, `--warmup-share X` | `train_wikitext.py` | the peak learning rate, and the share of all weight updates during which the rate rises to it (defaults: 6e-4; 0.03) |
 | `--checkpoint-dir DIR` | `generate.py` | search `DIR` for weights |
@@ -72,7 +73,7 @@ And the small-data variant:
 uv run python scripts/train_tiny.py
 ```
 
-Before running `train_tiny.py`, note what it does: it trains the full 162M-parameter model for 10 epochs and writes a checkpoint after each epoch into `checkpoints/tiny`, about 19.5 GB in total. See [05-training.md](05-training.md#train_tinypy).
+Before running `train_tiny.py`, note what it does: it trains the full 163M-parameter model for 10 epochs and writes a checkpoint after each epoch into `checkpoints/tiny`, about 19.5 GB in total. See [05-training.md](05-training.md#train_tinypy).
 
 How far each of these was run for the docs is listed in [README.md](README.md#snapshot). `train_wikitext.py` does not run on macOS as written; see [known issue 12](08-known-issues.md#12-train_wikitextpy-cannot-start-its-dataloader-workers-on-macos). The intended way to train is `train_colab.ipynb`, described in [05-training.md](05-training.md#colab-notebook).
 
@@ -104,7 +105,7 @@ The modules under `src/mini_llm/` only define things; importing them prints noth
 uv run pytest
 ```
 
-Verified: `15 passed`. pytest is configured in `pyproject.toml` to collect from `tests/` only, because `study/` contains demo scripts named `test_*.py` that run at import.
+Verified: `43 passed`. pytest is configured in `pyproject.toml` to collect from `tests/` only, because `study/` contains demo scripts named `test_*.py` that run at import.
 
 ## Devices
 
@@ -117,14 +118,17 @@ Verified: `15 passed`. pytest is configured in `pyproject.toml` to collect from 
 
 Measured on the Intel MacBook the docs were checked on (Radeon Pro 5300M, 4 GB), with torch 2.2.2:
 
-| Workload, full 162M model | CPU | MPS |
+| Workload, full 163M model | CPU | MPS |
 |---|---|---|
-| One forward pass, 1 x 256 tokens | 0.242 s | 0.071 s |
-| One training step, batch 2 x 256 | 2.78 s | 1.39 s |
-| One training step, batch 4 x 256 | not run | 1.72 s |
-| One training step, batch 8 x 256 | not run | out of memory |
+| One forward pass, 1 x 1,024 tokens | 0.920 s | 0.246 s |
+| One training step, batch 1 x 1,024 | 4.28 s | 1.98 s |
+| One training step, batch 2 x 1,024 | 7.68 s | out of memory |
 
-So MPS is worth having for `generate.py`. For training, the best that machine does is 595 tokens a second, at which one pass over the FineWeb mix would take about 19 days.
+The MPS training step is the median of six; the fastest took 1.79 s.
+
+So MPS is worth having for `generate.py`. For training, the best that machine does is about 520 tokens a second, at which one pass over the FineWeb mix would take about 22 days. The batch of 4 x 1,024 that `train_wikitext.py` uses does not fit its GPU.
+
+With the 256-token context, before 2026-10-12, a forward pass over 1 x 256 tokens took 0.242 s and 0.071 s, a training step at 2 x 256 took 2.78 s and 1.39 s, a step at 4 x 256 took 1.72 s on MPS, and 8 x 256 ran out of memory there.
 
 Before the model changed on 2026-10-11 (239M parameters, hand-written attention) the same measurements were 0.300 s and 0.093 s for the forward pass, 3.77 s and 2.68 s for the training step at batch 2, and batch 4 ran out of memory on MPS.
 
