@@ -39,6 +39,10 @@ parser.add_argument(
     help="how many end-of-epoch checkpoints to keep; older ones are deleted"
 )
 parser.add_argument(
+    "--batch-size", type=int, default=4,
+    help="windows in one batch; each window is as long as the model's context"
+)
+parser.add_argument(
     "--accumulate", type=int, default=16,
     help="batches whose gradients are added up for one weight update"
 )
@@ -51,8 +55,8 @@ parser.add_argument(
     help="share of all weight updates during which the learning rate rises to its peak"
 )
 args = parser.parse_args()
-if args.save_every < 1 or args.keep_checkpoints < 1 or args.epochs < 1 or args.accumulate < 1:
-    parser.error("--save-every, --keep-checkpoints, --epochs and --accumulate must be at least 1")
+if min(args.save_every, args.keep_checkpoints, args.epochs, args.batch_size, args.accumulate) < 1:
+    parser.error("--save-every, --keep-checkpoints, --epochs, --batch-size and --accumulate must be at least 1")
 if args.lr <= 0 or not 0 <= args.warmup_share <= 1:
     parser.error("--lr must be above 0 and --warmup-share between 0 and 1")
 checkpoint_dir = args.checkpoint_dir
@@ -95,7 +99,7 @@ if os.path.realpath(data_dir).startswith("/content/drive/"):
 print("Loading data via memmap...")
 train_dataloader = create_memmap_dataloader(
     bin_file_path=f"{data_dir}/train.bin",
-    batch_size=16, # Increased for T4 GPU
+    batch_size=args.batch_size,
     max_length=GPT_CONFIG_124M["context_length"],
     stride=GPT_CONFIG_124M["context_length"],
     drop_last=True,
@@ -107,7 +111,7 @@ train_dataloader = create_memmap_dataloader(
 # evaluation keeps drawing random training batches, which the ordered loader above cannot give
 train_eval_dataloader = create_memmap_dataloader(
     bin_file_path=f"{data_dir}/train.bin",
-    batch_size=16,
+    batch_size=args.batch_size,
     max_length=GPT_CONFIG_124M["context_length"],
     stride=GPT_CONFIG_124M["context_length"],
     shuffle=True,
@@ -117,7 +121,7 @@ train_eval_dataloader = create_memmap_dataloader(
 
 val_dataloader = create_memmap_dataloader(
     bin_file_path=f"{data_dir}/validation.bin",
-    batch_size=16,
+    batch_size=args.batch_size,
     max_length=GPT_CONFIG_124M["context_length"],
     stride=GPT_CONFIG_124M["context_length"],
     shuffle=False,

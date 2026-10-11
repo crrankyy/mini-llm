@@ -12,6 +12,10 @@ from mini_llm.training.trainer import train_model_v1
 from mini_llm.config import GPT_CONFIG_124M
 from mini_llm.device import get_device
 
+# The sample text is too short for windows as long as the model's context: its validation
+# part holds 522 tokens, which would not fill one window of 1,024
+WINDOW_LENGTH = 256
+
 
 device = get_device()
 print(f"")
@@ -91,8 +95,8 @@ val_data = raw_text[split_idx:]
 train_dataloader = create_dataloader(
                         train_data,
                         batch_size=2,
-                        max_length=GPT_CONFIG_124M["context_length"],
-                        stride=GPT_CONFIG_124M["context_length"],
+                        max_length=WINDOW_LENGTH,
+                        stride=WINDOW_LENGTH,
                         shuffle=True,
                         drop_last=True,
                         num_workers=0
@@ -101,8 +105,8 @@ train_dataloader = create_dataloader(
 val_dataloader   = create_dataloader(
                         val_data,
                         batch_size=2,
-                        max_length=GPT_CONFIG_124M["context_length"],
-                        stride=GPT_CONFIG_124M["context_length"],
+                        max_length=WINDOW_LENGTH,
+                        stride=WINDOW_LENGTH,
                         shuffle=False,
                         drop_last=False,
                         num_workers=0
