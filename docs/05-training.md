@@ -256,7 +256,7 @@ After the `try` block the script saves `model.state_dict()` to `gpt_wikitext_124
 | 2. Mount Google Drive | Mounts Drive at `/content/drive` and stops if the mount is missing, since the checkpoints would otherwise go to the temporary disk. |
 | 3. Get the code | Clones the private repo into `/content/mini-llm` with a GitHub token typed at a prompt. The token is passed to git through the environment and is not stored. |
 | 4. Install | `pip install -e` of the clone with the `data` extra. |
-| 5. Prepare the data | Runs `prepare_fineweb.py` with `TRAIN_TOKENS` and `EDU_SHARE`. The script does nothing when the folder already holds data prepared with those settings. |
+| 5. Prepare the data | Runs `prepare_fineweb.py` with `TRAIN_TOKENS` and `EDU_SHARE`, writing to the data folder on Drive. The script does nothing when the folder already holds data prepared with those settings. |
 | 6. Start training | Starts `train_wikitext.py` with `--checkpoint-dir <Drive folder>`, `--data-dir`, `--epochs`, `--save-every` and `--keep-checkpoints` as a detached background process, with its output appended to a log file on Drive. Does nothing if training is already running. |
 | 7. Watch progress | Parses the evaluation lines out of the log and plots train and validation loss; a second cell shows the end of the log and the checkpoint folder. |
 | 8. Stop training | The first cell sends the interrupt that `Ctrl-C` would send, on which the trainer saves its position. The second, run once training has stopped, calls `drive.flush_and_unmount()`, which returns when everything written to Drive has been uploaded. |
@@ -266,7 +266,8 @@ Where things live during a Colab run:
 | What | Where | Kept after the session |
 |---|---|---|
 | The clone, the installed package | `/content/mini-llm` | no |
-| `train.bin`, `validation.bin`, `manifest.json` | `/content/mini-llm/data/fineweb-mix/` | no; rebuilt by step 5 in every session, from the same pinned version of the data |
+| `train.bin`, `validation.bin`, `manifest.json` | `mini-llm/data/fineweb-mix/` on Google Drive | yes |
+| The copy of those files that training reads | `/content/data/fineweb-mix/` | no; copied from Drive again when training first starts in a session |
 | Checkpoints and final weights | `mini-llm/checkpoints/` on Google Drive | yes |
 | The training log | `mini-llm/train.log` on Google Drive | yes |
 
@@ -279,7 +280,7 @@ Verified locally: the clone cell against the real repository with a valid and an
 A new session resumes from the newer rolling checkpoint on Drive, at the step it was saved at, and continues the interrupted epoch in the same order.
 
 - **What a session can lose.** When the machine is taken away, the steps since the last rolling save: at most `SAVE_EVERY`, 2,000 by default. One pass over the FineWeb mix is 244,159 steps. When training is stopped with the stop cell, nothing, provided the flush cell is run before disconnecting.
-- **Space on Drive.** With the defaults a five-epoch run ends with five end-of-epoch checkpoints, two rolling files and the final weights, about 21 GB. `KEEP_CHECKPOINTS = 2` brings that to about 12.5 GB. A checkpoint the script deletes goes to Drive's Trash, where it keeps using space until the Trash is emptied (Colab's FAQ).
+- **Space on Drive.** With the defaults a five-epoch run ends with five end-of-epoch checkpoints, two rolling files and the final weights, about 21 GB. `KEEP_CHECKPOINTS = 2` brings that to about 12.5 GB. The training data takes another 4 GB. A checkpoint the script deletes goes to Drive's Trash, where it keeps using space until the Trash is emptied (Colab's FAQ).
 - **Saves are uploaded in the background.** A save that has not finished uploading when the machine disappears is lost, and the next session resumes from the other rolling file, one save earlier.
 
 Not established, because it needs a run on Colab:
@@ -288,3 +289,4 @@ Not established, because it needs a run on Colab:
 - **Save time.** How long a 2.88 GB save takes on the Drive mount, and with it how much of each `SAVE_EVERY` interval is spent saving.
 - **Modification times.** Whether modification times keep their order after Drive is mounted in a new session. Resume picks the newer rolling file by modification time; if the order were wrong, the run would resume from the other file, one save earlier.
 - **Steps per second on a Colab GPU.** The log gets a time-stamped line every 500 steps, so the first minutes of a run show it.
+- **The data copy.** How long the 4 GB copy from Drive to the Colab disk takes at the start of a session. Nothing compares the size of `train.bin` with the manifest, so an upload or a copy that was cut short would not be noticed.
