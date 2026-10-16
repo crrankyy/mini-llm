@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>mini-llm Modernization Plan</title>
+<meta name="description" content="Where mini-llm stands, the modern architecture to replace its GPT-2 design, sizes, compute, cost, context length and open training data.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&family=Source+Serif+4:opsz,wght@8..60,400&display=swap">
+<style>
+/* Layout: one reading column of about 68 characters on the cream canvas; wide tables, charts and the
+   dark code windows break out to the full 1080px band. Tokens are the Claude design system's own. */
+:root {
+  --primary: #cc785c;
+  --primary-active: #a9583e;
+  --ink: #141413;
+  --body-strong: #252523;
+  --body: #3d3d3a;
+  --muted: #6c6a64;
+  --muted-soft: #8e8b82;
+  --canvas: #faf9f5;
+  --surface-soft: #f5f0e8;
+  --surface-card: #efe9de;
+  --surface-cream-strong: #e8e0d2;
+  --hairline: #e6dfd8;
+  --hairline-soft: #ebe6df;
+  --surface-dark: #181715;
+  --surface-dark-elevated: #252320;
+  --surface-dark-soft: #1f1e1b;
+  --on-dark: #faf9f5;
+  --on-dark-soft: #a09d96;
+  --accent-teal: #5db8a6;
+  --accent-amber: #e8a55a;
+  --success: #5db872;
+  --warning: #d4a017;
+  --error: #c64545;
+
+  --font-display: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --space-xxs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px;
+  --space-lg: 24px; --space-xl: 32px; --space-xxl: 48px; --space-section: 96px;
+  --radius-sm: 6px; --radius-md: 8px; --radius-lg: 12px; --radius-xl: 16px; --radius-pill: 9999px;
+  --shadow-subtle: 0 1px 3px rgba(20, 20, 19, 0.08);
+  --focus-ring: 0 0 0 2px #faf9f5, 0 0 0 4px #a9583e;
+  --wide: 1080px;
+  --prose: 68ch;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--body);
+  font: 400 16px/1.55 var(--font-sans);
+  padding-inline: 16px;
+}
+.page { max-width: var(--wide); margin-inline: auto; padding-block: var(--space-xxl) var(--space-section); }
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 400; color: var(--ink); text-wrap: balance; margin: 0; }
+h1 { font-size: 64px; line-height: 1.05; letter-spacing: -1.5px; }
+h2 { font-size: 48px; line-height: 1.1; letter-spacing: -1px; }
+h3 { font-size: 28px; line-height: 1.2; letter-spacing: -0.3px; }
+h4 { font: 500 18px/1.4 var(--font-sans); color: var(--ink); margin: 0; }
+p, ul, ol { margin: 0; max-width: var(--prose); }
+ul, ol { padding-left: 1.25em; display: grid; gap: var(--space-xs); }
+strong { color: var(--body-strong); font-weight: 600; }
+a { color: var(--primary-active); text-underline-offset: 2px; }
+a:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 2px; }
+code { font-family: var(--font-mono); font-size: 0.875em; background: var(--surface-card); color: var(--ink); padding: 1px 5px; border-radius: 4px; }
+
+.eyebrow { font: 500 12px/1.4 var(--font-sans); letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
+.lead { font: 500 18px/1.5 var(--font-sans); color: var(--body-strong); }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* hero */
+.hero { display: grid; gap: var(--space-lg); padding-bottom: var(--space-xxl); border-bottom: 1px solid var(--hairline); }
+.hero .meta { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-lg); font-size: 14px; color: var(--muted); }
+
+/* table of contents */
+.toc { display: grid; gap: var(--space-xs); padding-block: var(--space-xl); border-bottom: 1px solid var(--hairline); }
+.toc ol { max-width: none; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-xs) var(--space-lg); font: 500 14px/1.4 var(--font-sans); }
+.toc a { color: var(--ink); text-decoration: none; }
+.toc a:hover { text-decoration: underline; }
+
+/* sections */
+section { display: grid; gap: var(--space-lg); padding-top: var(--space-section); scroll-margin-top: var(--space-lg); }
+section > header { display: grid; gap: var(--space-sm); }
+.sub { display: grid; gap: var(--space-md); padding-top: var(--space-lg); }
+
+/* verdict band: the one coral fill on the page */
+/* ink on coral is 5.6:1; the system's white-on-coral pair passes only at display size */
+.callout { background: var(--primary); color: var(--ink); border-radius: var(--radius-lg); padding: var(--space-xxl); display: grid; gap: var(--space-md); }
+.callout h3 { color: var(--ink); font-size: 28px; max-width: 34em; }
+.callout p { color: var(--ink); font-size: 18px; line-height: 1.5; max-width: 62ch; }
+
+/* cards */
+.grid { display: grid; gap: var(--space-lg); grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.grid.two { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.card { background: var(--surface-card); border-radius: var(--radius-lg); padding: var(--space-xl); display: grid; gap: var(--space-sm); align-content: start; min-width: 0; }
+.card.outlined { background: var(--canvas); border: 1px solid var(--hairline); }
+.card .big { font: 400 36px/1.1 var(--font-display); letter-spacing: -0.5px; color: var(--ink); }
+.card .label { font: 500 13px/1.4 var(--font-sans); color: var(--muted); }
+.card p { color: var(--body); }
+.card.pick { background: var(--canvas); border: 2px solid var(--ink); }
+
+.badge { display: inline-block; font: 500 12px/1.4 var(--font-sans); letter-spacing: 1.5px; text-transform: uppercase; border-radius: var(--radius-pill); padding: 2px 10px; background: var(--surface-cream-strong); color: var(--ink); justify-self: start; }
+.badge.accent { background: var(--primary-active); color: #ffffff; }
+.hl { background: var(--accent-amber); color: var(--ink); padding: 0 4px; border-radius: 3px; }
+
+/* tables */
+.table-wrap { overflow-x: auto; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--canvas); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--hairline-soft); vertical-align: top; }
+th { font-weight: 500; color: var(--ink); background: var(--surface-soft); }
+td:first-child { white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.r, th.r { text-align: right; }
+tr.pick td { background: var(--surface-card); }
+td .muted { font-size: 13px; }
+
+/* dark code window */
+.window { background: var(--surface-dark); color: var(--on-dark); border-radius: var(--radius-lg); overflow: hidden; min-width: 0; }
+.window .bar { display: flex; align-items: center; gap: var(--space-xs); padding: 10px var(--space-lg); background: var(--surface-dark-elevated); color: var(--on-dark-soft); font: 500 13px/1.4 var(--font-sans); }
+.window .bar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-teal); }
+.window pre { margin: 0; padding: var(--space-lg); overflow-x: auto; font: 400 14px/1.6 var(--font-mono); color: var(--on-dark); background: var(--surface-dark-soft); }
+.window pre .c { color: var(--on-dark-soft); }
+
+/* block diagrams */
+.blocks { display: grid; gap: var(--space-lg); grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.stack { display: grid; gap: 6px; background: var(--surface-card); border-radius: var(--radius-lg); padding: var(--space-xl); align-content: start; }
+.stack .layer { background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 8px 12px; font-size: 14px; color: var(--ink); display: flex; justify-content: space-between; gap: var(--space-sm); }
+.stack .layer span { color: var(--muted); font-size: 13px; text-align: right; }
+.stack .layer.new { border-color: var(--ink); }
+.stack .arrow { text-align: center; color: var(--muted); font-size: 13px; line-height: 1; }
+.stack .repeat { border: 1px dashed var(--muted-soft); border-radius: var(--radius-md); padding: 8px; display: grid; gap: 6px; }
+.stack .repeat > .eyebrow { text-align: center; }
+
+/* charts */
+figure { margin: 0; display: grid; gap: var(--space-sm); min-width: 0; }
+figure .chart { overflow-x: auto; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--radius-lg); padding: var(--space-lg); }
+figure svg { display: block; width: 100%; height: auto; min-width: 560px; }
+figcaption { font-size: 14px; color: var(--muted); max-width: var(--prose); }
+svg text { font-family: var(--font-sans); fill: var(--body); }
+svg .axis { stroke: var(--muted-soft); stroke-width: 1; }
+svg .grid { stroke: var(--hairline); stroke-width: 1; }
+
+/* step list */
+.steps { display: grid; gap: var(--space-md); counter-reset: step; max-width: none; padding: 0; list-style: none; }
+.steps > li { display: grid; grid-template-columns: 40px 1fr; gap: var(--space-md); background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--radius-lg); padding: var(--space-lg); }
+.steps > li::before { counter-increment: step; content: counter(step); font: 400 28px/1 var(--font-display); color: var(--ink); }
+.steps > li > div { display: grid; gap: var(--space-xs); min-width: 0; }
+
+.sources { font-size: 14px; max-width: none; }
+.sources li { overflow-wrap: anywhere; }
+
+footer { margin-top: var(--space-section); padding: var(--space-xl); background: var(--surface-dark); color: var(--on-dark-soft); border-radius: var(--radius-lg); font-size: 14px; display: grid; gap: var(--space-xs); }
+footer strong { color: var(--on-dark); }
+
+/* grid tracks default to their content's width, so a wide table or chart would widen the page;
+   minmax(0, 1fr) keeps every single-column grid at the page width and lets those scroll inside */
+.hero, .toc, section, section > header, .sub, figure, .card, .callout, .stack { grid-template-columns: minmax(0, 1fr); }
+.table-wrap, figure .chart, .window { min-width: 0; max-width: 100%; }
+
+@media (max-width: 767px) {
+  h1 { font-size: 32px; letter-spacing: -0.5px; }
+  h2 { font-size: 36px; }
+  h3 { font-size: 24px; }
+  section { padding-top: var(--space-xxl); }
+  .callout, .card { padding: var(--space-lg); }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+
+sup.cites { font-size: 11px; line-height: 0; margin-left: 1px; }
+sup.cites a { text-decoration: none; }
+</style>
+</head>
+<body>
+<main class="page">
+
+<header class="hero">
+  <div class="eyebrow">mini-llm · architecture plan · 16 October 2026</div>
+  <h1>From GPT-2 to a modern small model</h1>
+  <p class="lead">This report covers where the model stands today, what a 2026 design changes and why, how big the model can be on the hardware available, how much data it needs, and where to get that data openly.</p>
+  <div class="meta"><span>Branch <code>docs/architecture-modernization</code></span><span>Based on <code>main</code> at 19cee17</span><span>Figures marked measured were run on the MacBook; assumptions are labelled where they are used</span></div>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <div class="eyebrow">Contents</div>
+  <ol>
+    <li><a href="#answer">The short answer</a></li>
+    <li><a href="#today">Where the model stands</a></li>
+    <li><a href="#size">Why not 3–4B on this hardware</a></li>
+    <li><a href="#architecture">The modern architecture</a></li>
+    <li><a href="#context">Context: 1,024 to 32,768 tokens</a></li>
+    <li><a href="#configs">Sizes, compute and cost</a></li>
+    <li><a href="#data">Data: how much and where</a></li>
+    <li><a href="#recipe">Training recipe</a></li>
+    <li><a href="#inference">Running it on the MacBook</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li><a href="#decisions">Decisions for you</a></li>
+    <li><a href="#unverified">What is not verified</a></li>
+    <li><a href="#sources">Sources</a></li>
+  </ol>
+</nav>
+
+<section id="answer">
+  <header><div class="eyebrow">The short answer</div><h2>Build the modern design once, prove it at 0.4B, then scale</h2></header>
+  <div class="callout">
+    <h3>My recommendation is a 411M-parameter model with a 32,768-token context. Train it on about 22 billion tokens on a Colab A100. Go to 3–4B only with rented multi-GPU machines, once that run has proven the recipe.</h3>
+    <p>A model of 3.9B parameters needs 62 GB of training state, against the T4's 16 GB. A Chinchilla-sized run of it would take about 7.6 years of T4 time. The same architecture at 411M fits one Colab A100 and trains in about 181 GPU-hours, which is about $98 in compute units. Its weights and a full 32k KV cache come to 2.2 GB, which fits the MacBook's 4 GB GPU.</p>
+  </div>
+  <div class="grid">
+    <div class="card pick"><span class="badge accent">Recommended</span><div class="label">Model</div><div class="big">M · 411M</div><p>32 layers × 960, 15 query and 5 key/value heads, SwiGLU, RoPE, RMSNorm and QK-norm. This is SmolLM2-360M's shape with today's vocabulary.</p></div>
+    <div class="card"><div class="label">Context</div><div class="big">4,096 → 32,768</div><p>Pretrain at 4,096 tokens. A short second stage at 32,768 with a larger RoPE base follows, the way SmolLM3, Qwen3 and Llama 3 did it.</p></div>
+    <div class="card"><div class="label">Data</div><div class="big">20B + 2B tokens</div><p>About 49 tokens per parameter, from FineWeb-Edu, DCLM, The Stack v3 and FineMath. Books, code repositories and long PDFs supply the long stage. All of it is openly downloadable.</p></div>
+    <div class="card"><div class="label">Compute</div><div class="big">≈ 181 A100-hours</div><p>About $98 in Colab compute units, or about 7 hours on one rented 8×H100 node ($154–$228). On the T4 it would take 84 days.</p></div>
+  </div>
+  <div class="card outlined">
+    <div class="label">Your 3–4B, 32k target, priced</div>
+    <p><strong>XL, the Qwen3-4B shape, has 3.89B parameters.</strong> A Chinchilla-sized run of 80B tokens plus a 10B-token 32k stage takes about 1,882 H100-hours. That is 9.8 days of an 8×H100 node, or $5,063–$7,510 at today's list prices<sup class="cites">[<a href="#src-1" class="cite">1</a>, <a href="#src-2" class="cite">2</a>]</sup>.</p>
+    <p>It also needs:</p>
+    <ul>
+      <li>training code that shards the model across GPUs;</li>
+      <li>about 360 GB of tokenised data;</li>
+      <li>4-bit quantisation to run on the MacBook at all.</li>
+    </ul>
+    <p>The architecture is the same at every size, so this stays a configuration change once M has proven the code and the recipe.</p>
+  </div>
+</section>
+
+<section id="today">
+  <header><div class="eyebrow">Starting point</div><h2>Where the model stands</h2>
+  <p>The model is GPT-2 small's design from 2019 with today's vocabulary: 12 layers of width 768 and a learned table of 1,024 positions. Its only trained weights are from the stopped 256-token run.</p></header>
+  <div class="grid">
+    <div class="card"><div class="label">Parameters</div><div class="big">163M</div><p>47% of them are the 100,352-row token table. The 12 layers hold 85.0M.</p></div>
+    <div class="card"><div class="label">Trained so far (measured)</div><div class="big">65.5M tokens</div><p>The 256-token run's checkpoint at step 16,000. That is 0.7% of the 10B tokens llm.c used to reach GPT-2's quality<sup class="cites">[<a href="#src-3" class="cite">3</a>]</sup>.</p></div>
+    <div class="card"><div class="label">Loss on FineWeb text (measured)</div><div class="big">4.89</div><p>In nats per GPT-2 token, so it can be set against llm.c's 3.28 for GPT-2 small. In bits per byte that is 1.60 against about 1.07.</p></div>
+  </div>
+  <div class="window">
+    <div class="bar"><span class="dot"></span>generate_text · step-16,000 checkpoint · temperature 0.8, top-k 40 · measured 2026-10-16</div>
+<pre><span class="c">&gt;&gt;&gt;</span> The capital of France is the same and the city is only 3.3% high of its 20%. The number
+    of banks has risen by 2-3% since the 18%.
+<span class="c">&gt;&gt;&gt;</span> Photosynthesis is the process by which it can cause the bacteria to flow in the
+    environment and which can be applied to the environment.
+<span class="c">&gt;&gt;&gt;</span> 2 + 2 = 1.2 = 1.2 = 1.4 = 2.4 = 1.3 = 2 = 2.2 = 1.2 = 2 = 2 = 2.3 = 0 + 0 = 0</pre>
+  </div>
+  <div class="sub">
+    <h3>What holds it back, part by part</h3>
+    <ul>
+      <li><strong>The position table caps the context.</strong> A learned row per position cannot be read beyond its 1,024 rows, and it gives no way to extend the context after training.</li>
+      <li><strong>The block design dates from 2019.</strong> LayerNorm, a GELU feed-forward, biases and one key/value head per query head have each been replaced in current models by parts that measure better at the same size. The table under <a href="#architecture">The modern architecture</a> gives the evidence.</li>
+      <li><strong>The model is shallow and wide.</strong> At this size, 30 layers beat 12 for the same parameters: MobileLLM's average zero-shot score rose from 43.9 to 44.8<sup class="cites">[<a href="#src-4" class="cite">4</a>]</sup>.</li>
+      <li><strong>Generation has no KV cache.</strong> Every new token is a full pass over the whole text, so the MacBook's GPU falls from 12–15 tokens a second on short text to 3.8 at 1,024 tokens (measured 2026-10-12).</li>
+      <li><strong>The schedule fixes the run length up front.</strong> The cosine curve to a tenth of the peak is set from the total number of updates, so a run cannot be lengthened once it starts.</li>
+      <li><strong>Training uses fp16 even where bf16 exists.</strong> The trainer always uses fp16 with a gradient scaler. That is right on a T4, which has no bf16<sup class="cites">[<a href="#src-5" class="cite">5</a>]</sup>, but wasteful and less stable on an A100 or H100.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="size">
+  <header><div class="eyebrow">Reality check</div><h2>Why not 3–4B on this hardware</h2>
+  <p>Size has to follow from the compute budget. Three numbers decide whether a size is trainable at all: memory, time and data.</p></header>
+  <figure>
+    <div class="chart"><svg viewBox="0 0 760 294" role="img" aria-label="Training state in GB for each model size against GPU memory" xmlns="http://www.w3.org/2000/svg"><line class="grid" x1="170.0" y1="26" x2="170.0" y2="254"/><text x="170.0" y="280" font-size="12" text-anchor="middle" style="fill:#6c6a64">0 GB</text><line class="grid" x1="235.9" y1="26" x2="235.9" y2="254"/><text x="235.9" y="280" font-size="12" text-anchor="middle" style="fill:#6c6a64">10 GB</text><line class="grid" x1="301.8" y1="26" x2="301.8" y2="254"/><text x="301.8" y="280" font-size="12" text-anchor="middle" style="fill:#6c6a64">20 GB</text><line class="grid" x1="367.6" y1="26" x2="367.6" y2="254"/><text x="367.6" y="280" font-size="12" text-anchor="middle" style="fill:#6c6a64">30 GB</text><line class="grid" x1="433.5" y1="26" x2="433.5" y2="254"/><text x="433.5" y="280" font-size="12" text-anchor="middle" style="fill:#6c6a64">40 GB</text><line class="grid" x1="499.4" y1="26" x2="499.4" y2="254"/><text x="499.4" y="280" font-size="12" text-anchor="middle" style="fill:#6c6a64">50 GB</text><line class="grid" x1="565.3" y1="26" x2="565.3" y2="254"/><text x="565.3" y="280" font-size="12" text-anchor="middle" style="fill:#6c6a64">60 GB</text><line class="grid" x1="631.2" y1="26" x2="631.2" y2="254"/><text x="631.2" y="280" font-size="12" text-anchor="middle" style="fill:#6c6a64">70 GB</text><line class="grid" x1="697.1" y1="26" x2="697.1" y2="254"/><text x="697.1" y="280" font-size="12" text-anchor="middle" style="fill:#6c6a64">80 GB</text><text x="158" y="56" font-size="13" text-anchor="end" style="fill:#141413">Today, GPT-2 design</text><rect x="170" y="42" width="17.2" height="22" rx="3" style="fill:#141413"/><text x="193.2" y="58" font-size="12" style="fill:#141413">2.6 GB</text><text x="158" y="100" font-size="13" text-anchor="end" style="fill:#141413">S · 164M</text><rect x="170" y="86" width="17.3" height="22" rx="3" style="fill:#141413"/><text x="193.3" y="102" font-size="12" style="fill:#141413">2.6 GB</text><text x="158" y="144" font-size="13" text-anchor="end" style="fill:#141413">M · 411M</text><rect x="170" y="130" width="43.3" height="22" rx="3" style="fill:#a9583e"/><text x="219.3" y="146" font-size="12" style="fill:#141413">6.6 GB</text><text x="158" y="188" font-size="13" text-anchor="end" style="fill:#141413">L · 1.61B</text><rect x="170" y="174" width="170.2" height="22" rx="3" style="fill:#141413"/><text x="346.2" y="190" font-size="12" style="fill:#141413">25.8 GB</text><text x="158" y="232" font-size="13" text-anchor="end" style="fill:#141413">XL · 3.89B</text><rect x="170" y="218" width="410.1" height="22" rx="3" style="fill:#141413"/><text x="586.1" y="234" font-size="12" style="fill:#141413">62.2 GB</text><line x1="275.4" y1="20" x2="275.4" y2="254" stroke="#a9583e" stroke-width="1.5" stroke-dasharray="5 4"/><text x="279.4" y="16" font-size="12" text-anchor="start" style="fill:#a9583e">T4 · 16 GB</text><line x1="433.5" y1="20" x2="433.5" y2="254" stroke="#a9583e" stroke-width="1.5" stroke-dasharray="5 4"/><text x="437.5" y="16" font-size="12" text-anchor="start" style="fill:#a9583e">A100 · 40 GB</text><line x1="697.1" y1="20" x2="697.1" y2="254" stroke="#a9583e" stroke-width="1.5" stroke-dasharray="5 4"/><text x="693.1" y="16" font-size="12" text-anchor="end" style="fill:#a9583e">A100 or H100 · 80 GB</text></svg></div>
+    <figcaption>Training state at 16 bytes per parameter: fp16 weights and gradients plus fp32 master weights, momentum and variance<sup class="cites">[<a href="#src-6" class="cite">6</a>]</sup>. Activations come on top. The coral bar is the recommended size.</figcaption>
+  </figure>
+  <div class="grid two">
+    <div class="card"><div class="label">Memory</div><p>XL needs 62 GB before a single activation is stored. A T4 has 16 GB<sup class="cites">[<a href="#src-5" class="cite">5</a>]</sup>. Even 8-bit optimiser states, at about 2 bytes per parameter for Adam's two moments, leave it far over. Sharding across GPUs divides the state by the number of GPUs<sup class="cites">[<a href="#src-6" class="cite">6</a>]</sup>.</p></div>
+    <div class="card"><div class="label">Time</div><p>The T4 delivered about 11.2 TFLOPS on today's model, measured from the 11,400 tokens a second of the 256-token run. At that rate XL needs 666 hours per billion tokens. Even your 5B-token dataset would take 139 days.</p></div>
+    <div class="card"><div class="label">Data per parameter</div><p>5B tokens is 1.3 tokens per parameter for XL. The compute-optimal ratio is about 20<sup class="cites">[<a href="#src-7" class="cite">7</a>]</sup>, and current small models go far beyond it. At a fixed budget, a smaller model trained on enough data beats a large undertrained one<sup class="cites">[<a href="#src-7" class="cite">7</a>, <a href="#src-8" class="cite">8</a>]</sup>.</p></div>
+  </div>
+  <p>On the MacBook, XL's fp16 weights alone are 7.8 GB, about twice the GPU's memory. Qwen3-4B, the same shape, is 2.5 GB at 4-bit<sup class="cites">[<a href="#src-9" class="cite">9</a>]</sup>, and its fp16 KV cache at 32k is another 4.8 GB. A user report says llama.cpp's Metal backend gives garbage output on this GPU, while its Vulkan backend works<sup class="cites">[<a href="#src-10" class="cite">10</a>]</sup>.</p>
+</section>
+
+<section id="architecture">
+  <header><div class="eyebrow">Design</div><h2>The modern architecture</h2>
+  <p>Current small open models (Qwen3, SmolLM2 and SmolLM3, OLMo 2, Llama 3.2, Gemma 3) have converged on one decoder layout. The proposal adopts it with no exotic parts, so every component has published evidence at small scale. It also keeps the layer layout of Qwen3, which may later allow export to common inference tools.</p>
+  <p>How much the design matters at a fixed size shows in the NanoGPT speedrun. It reaches the loss llm.c's GPT-2 small reached on 10B tokens with under 330M tokens, using rotary embeddings, QK-norm and the Muon optimiser among other changes<sup class="cites">[<a href="#src-11" class="cite">11</a>]</sup>.</p></header>
+  <div class="blocks">
+    <div class="stack" aria-label="Today's block">
+      <div class="eyebrow">Today · GPT-2 (2019)</div>
+      <div class="layer">Token table <span>100,352 × 768, tied</span></div>
+      <div class="layer">+ position table <span>1,024 rows, learned</span></div>
+      <div class="repeat"><div class="eyebrow">× 12 layers</div>
+        <div class="layer">LayerNorm</div>
+        <div class="layer">Attention <span>12 heads, each with its own keys and values</span></div>
+        <div class="arrow">+ residual</div>
+        <div class="layer">LayerNorm</div>
+        <div class="layer">MLP <span>768 → 3,072 → 768, GELU, biases</span></div>
+        <div class="arrow">+ residual</div>
+      </div>
+      <div class="layer">LayerNorm → output layer <span>cross-entropy</span></div>
+    </div>
+    <div class="stack" aria-label="Proposed block">
+      <div class="eyebrow">Proposed · size M</div>
+      <div class="layer">Token table <span>100,352 × 960, tied; no position table</span></div>
+      <div class="repeat"><div class="eyebrow">× 32 layers</div>
+        <div class="layer new">RMSNorm</div>
+        <div class="layer new">Attention <span>15 query heads share 5 KV heads · RoPE on queries and keys · QK-norm · no attention across document boundaries</span></div>
+        <div class="arrow">+ residual</div>
+        <div class="layer new">RMSNorm</div>
+        <div class="layer new">SwiGLU <span>960 → 2 × 2,560 → 960, no biases</span></div>
+        <div class="arrow">+ residual</div>
+      </div>
+      <div class="layer new">RMSNorm → output layer <span>cross-entropy + z-loss, in chunks</span></div>
+    </div>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Part</th><th>Today</th><th>Proposed</th><th>Why, with the evidence</th><th>Used by</th></tr></thead>
+    <tbody>
+      <tr><td>Positions</td><td>Learned table, 1,024 rows</td><td>Rotary embeddings (RoPE), base 100,000 for pretraining, raised to 1,500,000 for the 32k stage</td><td>RoPE encodes relative position inside attention<sup class="cites">[<a href="#src-12" class="cite">12</a>]</sup>. In EleutherAI's 125M run it reached validation loss 2.759 against 2.809 for a learned table<sup class="cites">[<a href="#src-13" class="cite">13</a>]</sup>. Raising its base is how current models extend context<sup class="cites">[<a href="#src-14" class="cite">14</a>, <a href="#src-15" class="cite">15</a>]</sup>.</td><td>Llama 3, Qwen3, SmolLM2/3, OLMo 2, Gemma 3</td></tr>
+      <tr><td>Normalisation</td><td>LayerNorm before each sublayer</td><td>RMSNorm before each sublayer</td><td>Drops the mean subtraction. It ran 7–64% faster in its paper at equal quality<sup class="cites">[<a href="#src-16" class="cite">16</a>]</sup>.</td><td>All of the above</td></tr>
+      <tr><td>Feed-forward</td><td>GELU, 4× width, biases</td><td>SwiGLU, 2.67× width, three matrices</td><td>At equal parameters, log-perplexity was 1.944 against GELU's 1.983<sup class="cites">[<a href="#src-17" class="cite">17</a>]</sup>. In MobileLLM's 125M model it raised the zero-shot average from 42.6 to 43.9<sup class="cites">[<a href="#src-4" class="cite">4</a>]</sup>.</td><td>All of the above</td></tr>
+      <tr><td>Key/value heads</td><td>12, one per query head</td><td>Grouped-query attention: 15 query heads share 5 key/value heads (M)</td><td>Quality close to full heads at the speed of fewer heads<sup class="cites">[<a href="#src-18" class="cite">18</a>]</sup>. Cutting from 16 to 4 KV heads cost 0.2 points at 350M<sup class="cites">[<a href="#src-4" class="cite">4</a>]</sup>. It makes the 32k KV cache 3× smaller.</td><td>Llama 3, Qwen3, SmolLM2/3, Gemma 3</td></tr>
+      <tr><td>Stability</td><td>Gradient clipping only</td><td>QK-norm (RMSNorm on each head's queries and keys) and a z-loss of 1e-4</td><td>QK-norm let a 1.2B model train at learning rate 0.3, and z-loss removed output-logit divergence<sup class="cites">[<a href="#src-19" class="cite">19</a>, <a href="#src-20" class="cite">20</a>]</sup>. This matters more in fp16 on a T4: BLOOM traced its divergences to fp16<sup class="cites">[<a href="#src-21" class="cite">21</a>]</sup>. Normalised outputs plus QK-norm lowered OLMo 2's spike score from 0.108 to 0.069<sup class="cites">[<a href="#src-22" class="cite">22</a>]</sup>.</td><td>Qwen3, OLMo 2, Gemma 3</td></tr>
+      <tr><td>Biases</td><td>In projections and MLP</td><td>None</td><td>PaLM dropped them for stability<sup class="cites">[<a href="#src-20" class="cite">20</a>]</sup>. They are also absent from every current reference model.</td><td>Llama, Qwen3, OLMo 2, PaLM</td></tr>
+      <tr><td>Shape</td><td>12 layers × 768</td><td>32 layers × 960 (M), deep and thin</td><td>At 125M, 30 layers averaged 44.8 and 12 layers 43.9 at equal size<sup class="cites">[<a href="#src-4" class="cite">4</a>]</sup>.</td><td>SmolLM2, MobileLLM</td></tr>
+      <tr><td>Packed documents</td><td>Attention crosses document boundaries</td><td>Mask attention to the current document</td><td>Little effect in short pretraining, but important for long sequences (Llama 3)<sup class="cites">[<a href="#src-23" class="cite">23</a>]</sup>. It helped both short and long context in ProLong<sup class="cites">[<a href="#src-24" class="cite">24</a>]</sup>.</td><td>Llama 3, SmolLM3</td></tr>
+      <tr><td>Vocabulary</td><td>cl100k, 100,352 rows, tied</td><td>Kept</td><td>Measured below: it packs English and code as tightly as Llama 3's 128k vocabulary. OLMo 2 uses the same padded size<sup class="cites">[<a href="#src-25" class="cite">25</a>]</sup>.</td><td>OLMo 2; Llama 3 extends it</td></tr>
+    </tbody>
+  </table></div>
+  <div class="sub">
+    <h3>Considered and left out at this size</h3>
+    <ul>
+      <li><strong>Mixture of experts.</strong> OLMoE matched a dense model with about 3× fewer tokens but was only about 2× faster in wall-clock time. It must also hold all 7B parameters in memory<sup class="cites">[<a href="#src-26" class="cite">26</a>]</sup>, which the T4 and the MacBook cannot.</li>
+      <li><strong>Multi-token prediction.</strong> It did worse than plain next-token training at small sizes and helped only from about 13B<sup class="cites">[<a href="#src-27" class="cite">27</a>]</sup>.</li>
+      <li><strong>Sliding-window attention.</strong> Gemma 3's 5 local layers per global layer cut KV memory a lot<sup class="cites">[<a href="#src-28" class="cite">28</a>]</sup>, but at sizes S and M the full 32k cache is only 0.75 and 1.34 GB. It is worth considering for XL.</li>
+      <li><strong>No-position layers.</strong> SmolLM3 drops RoPE in every 4th layer and reports better long context<sup class="cites">[<a href="#src-29" class="cite">29</a>]</sup>. It is a cheap option for the 32k stage, but the published comparison gives no numbers.</li>
+      <li><strong>The Muon optimiser.</strong> It needs about 52% of AdamW's compute in Moonshot's tests<sup class="cites">[<a href="#src-30" class="cite">30</a>]</sup>. An independent benchmark found its lead shrinks from 1.4× at 0.1B to 1.1× at 1.2B<sup class="cites">[<a href="#src-31" class="cite">31</a>]</sup>, and no source tests it in fp16. It is a candidate for a short test at size S, not the default.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="context">
+  <header><div class="eyebrow">Context window</div><h2>From 1,024 to 32,768 tokens</h2>
+  <p>A long context is cheap to add late and expensive to train from the start. Current models pretrain at 4–8k and then extend in a short stage with a larger RoPE base. SmolLM3 went from 4k to 32k with 50B tokens at base 1.5M, then to 64k<sup class="cites">[<a href="#src-29" class="cite">29</a>]</sup>. Qwen3 raised its base from 10,000 to 1,000,000 for a 32,768-token stage<sup class="cites">[<a href="#src-15" class="cite">15</a>]</sup>. Llama 3 reached 128k in six stages with about 800B tokens<sup class="cites">[<a href="#src-23" class="cite">23</a>]</sup>.</p></header>
+  <figure>
+    <div class="chart"><svg viewBox="0 0 760 320" role="img" aria-label="Share of training compute spent in attention as the context grows" xmlns="http://www.w3.org/2000/svg"><line class="grid" x1="60" y1="270.0" x2="640" y2="270.0"/><text x="52" y="274.0" font-size="12" text-anchor="end" style="fill:#6c6a64">0%</text><line class="grid" x1="60" y1="220.8" x2="640" y2="220.8"/><text x="52" y="224.8" font-size="12" text-anchor="end" style="fill:#6c6a64">20%</text><line class="grid" x1="60" y1="171.6" x2="640" y2="171.6"/><text x="52" y="175.6" font-size="12" text-anchor="end" style="fill:#6c6a64">40%</text><line class="grid" x1="60" y1="122.4" x2="640" y2="122.4"/><text x="52" y="126.4" font-size="12" text-anchor="end" style="fill:#6c6a64">60%</text><line class="grid" x1="60" y1="73.2" x2="640" y2="73.2"/><text x="52" y="77.2" font-size="12" text-anchor="end" style="fill:#6c6a64">80%</text><line class="grid" x1="60" y1="24.0" x2="640" y2="24.0"/><text x="52" y="28.0" font-size="12" text-anchor="end" style="fill:#6c6a64">100%</text><text x="60.0" y="290" font-size="12" text-anchor="middle" style="fill:#141413">1k</text><text x="142.9" y="290" font-size="12" text-anchor="middle" style="fill:#141413">2k</text><text x="225.7" y="290" font-size="12" text-anchor="middle" style="fill:#141413">4k</text><text x="308.6" y="290" font-size="12" text-anchor="middle" style="fill:#141413">8k</text><text x="391.4" y="290" font-size="12" text-anchor="middle" style="fill:#141413">16k</text><text x="474.3" y="290" font-size="12" text-anchor="middle" style="fill:#141413">32k</text><text x="557.1" y="290" font-size="12" text-anchor="middle" style="fill:#141413">64k</text><text x="640.0" y="290" font-size="12" text-anchor="middle" style="fill:#141413">128k</text><text x="350.0" y="312" font-size="12" text-anchor="middle" style="fill:#6c6a64">context length (tokens per window)</text><polyline points="60.0,246.0 142.9,226.3 225.7,195.8 308.6,156.0 391.4,114.2 474.3,79.2 557.1,55.1 640.0,40.6" fill="none" stroke="#6c6a64" stroke-width="2"/><circle cx="225.7" cy="195.8" r="3.5" style="fill:#6c6a64"/><circle cx="474.3" cy="79.2" r="3.5" style="fill:#6c6a64"/><polyline points="60.0,252.5 142.9,237.3 225.7,212.3 308.6,176.6 391.4,134.6 474.3,95.3 557.1,65.7 640.0,46.8" fill="none" stroke="#a9583e" stroke-width="3"/><circle cx="225.7" cy="212.3" r="3.5" style="fill:#a9583e"/><circle cx="474.3" cy="95.3" r="3.5" style="fill:#a9583e"/><polyline points="60.0,261.4 142.9,253.3 225.7,238.8 308.6,214.6 391.4,179.5 474.3,137.7 557.1,97.9 640.0,67.5" fill="none" stroke="#141413" stroke-width="2"/><circle cx="225.7" cy="238.8" r="3.5" style="fill:#141413"/><circle cx="474.3" cy="137.7" r="3.5" style="fill:#141413"/><polyline points="60.0,260.8 142.9,252.3 225.7,236.9 308.6,211.7 391.4,175.8 474.3,133.7 557.1,94.6 640.0,65.2" fill="none" stroke="#141413" stroke-width="2" stroke-dasharray="6 4"/><circle cx="225.7" cy="236.9" r="3.5" style="fill:#141413"/><circle cx="474.3" cy="133.7" r="3.5" style="fill:#141413"/><text x="650" y="44.6" font-size="13" style="fill:#6c6a64">S · 164M</text><text x="650" y="60.6" font-size="13" style="fill:#a9583e">M · 411M</text><text x="650" y="76.6" font-size="13" style="fill:#141413">XL · 3.89B</text><text x="650" y="92.6" font-size="13" style="fill:#141413">L · 1.61B</text></svg></div>
+    <figcaption>Share of training compute spent in attention, from the FLOP formula below; the dots mark 4k and 32k. For M, a token at 32k costs 2.6× a token at 4k, so most training stays at 4k.</figcaption>
+  </figure>
+  <div class="sub">
+    <h3>The data has to contain long documents</h3>
+    <p>Measured on your 1-billion-token FineWeb mix: the median document is 476 tokens, and only 1.5% of the tokens sit in documents of 32k or more. A 32k window built from this data is mostly unrelated pages packed together, which teaches nothing about long-range reading.</p>
+    <figure>
+      <div class="chart"><svg viewBox="0 0 760 300" role="img" aria-label="Share of training tokens in documents at least N tokens long" xmlns="http://www.w3.org/2000/svg"><line class="grid" x1="60" y1="250.0" x2="740" y2="250.0"/><text x="52" y="254.0" font-size="12" text-anchor="end" style="fill:#6c6a64">0%</text><line class="grid" x1="60" y1="212.3" x2="740" y2="212.3"/><text x="52" y="216.3" font-size="12" text-anchor="end" style="fill:#6c6a64">10%</text><line class="grid" x1="60" y1="174.7" x2="740" y2="174.7"/><text x="52" y="178.7" font-size="12" text-anchor="end" style="fill:#6c6a64">20%</text><line class="grid" x1="60" y1="137.0" x2="740" y2="137.0"/><text x="52" y="141.0" font-size="12" text-anchor="end" style="fill:#6c6a64">30%</text><line class="grid" x1="60" y1="99.3" x2="740" y2="99.3"/><text x="52" y="103.3" font-size="12" text-anchor="end" style="fill:#6c6a64">40%</text><line class="grid" x1="60" y1="61.7" x2="740" y2="61.7"/><text x="52" y="65.7" font-size="12" text-anchor="end" style="fill:#6c6a64">50%</text><line class="grid" x1="60" y1="24.0" x2="740" y2="24.0"/><text x="52" y="28.0" font-size="12" text-anchor="end" style="fill:#6c6a64">60%</text><rect x="75.3" y="32.3" width="54.4" height="217.7" rx="3" style="fill:#141413"/><text x="102.5" y="26.3" font-size="12" text-anchor="middle" style="fill:#141413">57.8%</text><text x="102.5" y="270" font-size="12" text-anchor="middle" style="fill:#141413">1k+</text><rect x="160.3" y="120.1" width="54.4" height="129.9" rx="3" style="fill:#141413"/><text x="187.5" y="114.1" font-size="12" text-anchor="middle" style="fill:#141413">34.5%</text><text x="187.5" y="270" font-size="12" text-anchor="middle" style="fill:#141413">2k+</text><rect x="245.3" y="175.5" width="54.4" height="74.5" rx="3" style="fill:#141413"/><text x="272.5" y="169.5" font-size="12" text-anchor="middle" style="fill:#141413">19.8%</text><text x="272.5" y="270" font-size="12" text-anchor="middle" style="fill:#141413">4k+</text><rect x="330.3" y="210.5" width="54.4" height="39.5" rx="3" style="fill:#141413"/><text x="357.5" y="204.5" font-size="12" text-anchor="middle" style="fill:#141413">10.5%</text><text x="357.5" y="270" font-size="12" text-anchor="middle" style="fill:#141413">8k+</text><rect x="415.3" y="234.0" width="54.4" height="16.0" rx="3" style="fill:#141413"/><text x="442.5" y="228.0" font-size="12" text-anchor="middle" style="fill:#141413">4.3%</text><text x="442.5" y="270" font-size="12" text-anchor="middle" style="fill:#141413">16k+</text><rect x="500.3" y="244.3" width="54.4" height="5.7" rx="3" style="fill:#a9583e"/><text x="527.5" y="238.3" font-size="12" text-anchor="middle" style="fill:#141413">1.5%</text><text x="527.5" y="270" font-size="12" text-anchor="middle" style="fill:#141413">32k+</text><rect x="585.3" y="247.5" width="54.4" height="2.5" rx="3" style="fill:#141413"/><text x="612.5" y="241.5" font-size="12" text-anchor="middle" style="fill:#141413">0.7%</text><text x="612.5" y="270" font-size="12" text-anchor="middle" style="fill:#141413">64k+</text><rect x="670.3" y="249.9" width="54.4" height="0.1" rx="3" style="fill:#141413"/><text x="697.5" y="243.9" font-size="12" text-anchor="middle" style="fill:#141413">0.02%</text><text x="697.5" y="270" font-size="12" text-anchor="middle" style="fill:#141413">128k+</text><text x="410.0" y="292" font-size="12" text-anchor="middle" style="fill:#6c6a64">documents of at least this many tokens</text></svg></div>
+      <figcaption>Share of the 1,000,075,641 training tokens that sit in documents at least this long (1,241,484 documents, measured 2026-10-16). FineWeb-Edu documents run longer than FineWeb's: 1.8% of their tokens are in 32k+ documents, against 1.3%.</figcaption>
+    </figure>
+    <p>The long stage therefore draws on books, whole code repositories and long PDFs. ProLong found code repositories and books the best long sources, and a mix of 60% long with 40% short data the best<sup class="cites">[<a href="#src-24" class="cite">24</a>]</sup>. Olmo 3 kept short-context scores within 0.8 points using 34% long data<sup class="cites">[<a href="#src-32" class="cite">32</a>]</sup>. In Fu et al.'s experiments, 0.5–5B tokens of such training were enough for retrieval anywhere in a 128k context<sup class="cites">[<a href="#src-33" class="cite">33</a>]</sup>. The plan for M uses 2B tokens at 32k, 40% of them long.</p>
+  </div>
+  <figure>
+    <div class="chart"><svg viewBox="0 0 760 354" role="img" aria-label="KV cache in GB at 32,768 tokens, grouped-query against one KV head per query head" xmlns="http://www.w3.org/2000/svg"><line class="grid" x1="170.0" y1="26" x2="170.0" y2="294"/><text x="170.0" y="312" font-size="12" text-anchor="middle" style="fill:#6c6a64">0 GB</text><line class="grid" x1="282.0" y1="26" x2="282.0" y2="294"/><text x="282.0" y="312" font-size="12" text-anchor="middle" style="fill:#6c6a64">4 GB</text><line class="grid" x1="394.0" y1="26" x2="394.0" y2="294"/><text x="394.0" y="312" font-size="12" text-anchor="middle" style="fill:#6c6a64">8 GB</text><line class="grid" x1="506.0" y1="26" x2="506.0" y2="294"/><text x="506.0" y="312" font-size="12" text-anchor="middle" style="fill:#6c6a64">12 GB</text><line class="grid" x1="618.0" y1="26" x2="618.0" y2="294"/><text x="618.0" y="312" font-size="12" text-anchor="middle" style="fill:#6c6a64">16 GB</text><line class="grid" x1="730.0" y1="26" x2="730.0" y2="294"/><text x="730.0" y="312" font-size="12" text-anchor="middle" style="fill:#6c6a64">20 GB</text><line x1="282.0" y1="20" x2="282.0" y2="294" stroke="#a9583e" stroke-width="1.5" stroke-dasharray="5 4"/><text x="286.0" y="18" font-size="12" style="fill:#a9583e">MacBook GPU 4 GB</text><text x="158" y="58" font-size="13" text-anchor="end" style="fill:#141413">Today (12 KV heads)</text><rect x="170" y="58" width="33.8" height="14" rx="3" style="fill:#141413"/><text x="209.8" y="69" font-size="12" style="fill:#141413">1.21 GB (full heads)</text><text x="158" y="110" font-size="13" text-anchor="end" style="fill:#141413">S · 164M</text><rect x="170" y="92" width="63.4" height="14" rx="3" style="fill:#e8e0d2" stroke="#6c6a64" stroke-width="1"/><text x="239.4" y="103" font-size="12" style="fill:#6c6a64">2.26 GB with a KV head per query head</text><rect x="170" y="110" width="21.1" height="14" rx="3" style="fill:#141413"/><text x="197.1" y="121" font-size="12" style="fill:#141413">0.75 GB as designed</text><text x="158" y="162" font-size="13" text-anchor="end" style="fill:#141413">M · 411M</text><rect x="170" y="144" width="112.7" height="14" rx="3" style="fill:#e8e0d2" stroke="#6c6a64" stroke-width="1"/><text x="288.7" y="155" font-size="12" style="fill:#6c6a64">4.03 GB with a KV head per query head</text><rect x="170" y="162" width="37.6" height="14" rx="3" style="fill:#a9583e"/><text x="213.6" y="173" font-size="12" style="fill:#141413">1.34 GB as designed</text><text x="158" y="214" font-size="13" text-anchor="end" style="fill:#141413">L · 1.61B</text><rect x="170" y="196" width="210.5" height="14" rx="3" style="fill:#e8e0d2" stroke="#6c6a64" stroke-width="1"/><text x="386.5" y="207" font-size="12" style="fill:#6c6a64">7.52 GB with a KV head per query head</text><rect x="170" y="214" width="105.2" height="14" rx="3" style="fill:#141413"/><text x="281.2" y="225" font-size="12" style="fill:#141413">3.76 GB as designed</text><text x="158" y="266" font-size="13" text-anchor="end" style="fill:#141413">XL · 3.89B</text><rect x="170" y="248" width="541.2" height="14" rx="3" style="fill:#e8e0d2" stroke="#6c6a64" stroke-width="1"/><text x="705.2" y="259" font-size="12" text-anchor="end" style="fill:#141413">19.33 GB with a KV head per query head</text><rect x="170" y="266" width="135.3" height="14" rx="3" style="fill:#141413"/><text x="311.3" y="277" font-size="12" style="fill:#141413">4.83 GB as designed</text><text x="465.0" y="344" font-size="12" text-anchor="middle" style="fill:#6c6a64">fp16 keys and values for one 32,768-token sequence (the weights come on top)</text></svg></div>
+    <figcaption>KV cache at 32,768 tokens = 2 × layers × KV heads × head size × 2 bytes × tokens. Grouped-query attention is what keeps M's 32k cache at 1.34 GB.</figcaption>
+  </figure>
+  <div class="sub">
+    <h3>What the code needs for 32k</h3>
+    <ul>
+      <li><strong>Loss in chunks.</strong> The full logits of one 32,768-token sequence over 100,352 tokens are 13.2 GB in fp32. The output layer and loss have to run a slice of the sequence at a time.</li>
+      <li><strong>Activation checkpointing.</strong> Keeping only each layer's input cuts activation memory to 2 × sequence × width × layers bytes<sup class="cites">[<a href="#src-34" class="cite">34</a>]</sup>. For M at 32k that is 2.0 GB.</li>
+      <li><strong>Document masking.</strong> PyTorch's FlexAttention or a variable-length kernel do this efficiently on Ampere and newer GPUs. On a T4, an explicit mask at 4k is possible, but I haven't measured its cost.</li>
+      <li><strong>Beyond 32k.</strong> YaRN can stretch a trained context further at inference; SmolLM3 reaches 128k that way<sup class="cites">[<a href="#src-35" class="cite">35</a>, <a href="#src-29" class="cite">29</a>]</sup>. I haven't verified this at our sizes.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="configs">
+  <header><div class="eyebrow">Sizing</div><h2>Sizes, compute and cost</h2>
+  <p>Four sizes of the same architecture. Each copies the shape of a published model (SmolLM2 and MobileLLM for the small ones, Qwen3 for the large ones) and keeps today's vocabulary, so every shape has already been trained successfully by someone.</p></header>
+  <div class='table-wrap'><table><thead><tr><th>Size</th><th>Shape taken from</th><th class='r'>Parameters</th><th class='r'>of which token table</th><th>Layers × width · heads (query / KV) · FFN</th><th class='r'>GFLOP per token at 4k / 32k</th><th class='r'>Training state</th><th class='r'>Checkpoint</th></tr></thead><tbody><tr><td>Today</td><td>GPT-2 small (2019)</td><td class='r'>163M</td><td class='r'>77M (47%)</td><td>12 × 768 · 12 / 12 · 3,072 GELU</td><td class='r'>1.03 at 1k</td><td class='r'>2.6 GB</td><td class='r'>1.95 GB</td></tr><tr><td><strong>S</strong></td><td>SmolLM2-135M / MobileLLM-125M</td><td class='r'>164M</td><td class='r'>58M (35%)</td><td>30 × 576 · 9 / 3 · 1,536 SwiGLU</td><td class='r'>1.41 / 4.38</td><td class='r'>2.6 GB</td><td class='r'>2.0 GB</td></tr><tr class="pick"><td><strong>M</strong></td><td>SmolLM2-360M / MobileLLM-350M</td><td class='r'>411M</td><td class='r'>96M (23%)</td><td>32 × 960 · 15 / 5 · 2,560 SwiGLU</td><td class='r'>3.22 / 8.51</td><td class='r'>6.6 GB</td><td class='r'>4.9 GB</td></tr><tr><td><strong>L</strong></td><td>Qwen3-1.7B</td><td class='r'>1.61B</td><td class='r'>206M (13%)</td><td>28 × 2,048 · 16 / 8 · 6,144 SwiGLU</td><td class='r'>11.10 / 20.96</td><td class='r'>25.8 GB</td><td class='r'>19.4 GB</td></tr><tr><td><strong>XL</strong></td><td>Qwen3-4B</td><td class='r'>3.89B</td><td class='r'>257M (7%)</td><td>36 × 2,560 · 32 / 8 · 9,728 SwiGLU</td><td class='r'>26.97 / 52.33</td><td class='r'>62.2 GB</td><td class='r'>46.7 GB</td></tr></tbody></table></div>
+  <p class="small muted">Parameters are counted exactly: no biases, RMSNorm and QK-norm scales, three SwiGLU matrices and a tied table. Training FLOPs per token are 6 × the matrices a token passes through, plus 6 × layers × context × query width for causal attention<sup class="cites">[<a href="#src-36" class="cite">36</a>, <a href="#src-20" class="cite">20</a>]</sup>. The formula reproduces the published counts:</p>
+  <div class='table-wrap'><table><thead><tr><th>Published model</th><th class='r'>Published</th><th class='r'>This report's formula</th></tr></thead><tbody><tr><td>MobileLLM-125M (32k vocab, no QK-norm)</td><td class='r'>124.6M</td><td class='r'>124.6M</td></tr><tr><td>MobileLLM-350M (32k vocab, no QK-norm)</td><td class='r'>345.3M</td><td class='r'>345.4M</td></tr><tr><td>Qwen3-1.7B non-embedding</td><td class='r'>1,400.0M</td><td class='r'>1,409.4M</td></tr><tr><td>Qwen3-4B non-embedding</td><td class='r'>3,600.0M</td><td class='r'>3,633.5M</td></tr><tr><td>Qwen3-4B total</td><td class='r'>4,000.0M</td><td class='r'>4,022.5M</td></tr></tbody></table></div>
+  <div class="sub">
+    <h3>Time and cost to train each size</h3>
+    <div class='table-wrap'><table><thead><tr><th>Size</th><th class='r'>Tokens: 4k + 32k stage</th><th class='r'>Tokens per parameter</th><th class='r'>Data on disk</th><th class='r'>T4 hours</th><th class='r'>A100 hours</th><th class='r'>Colab A100 cost</th><th class='r'>H100 GPU-hours</th><th class='r'>Rented H100 cost</th></tr></thead><tbody><tr><td><strong>S</strong> · 164M</td><td class='r'>5B + 0.5B</td><td class='r'>30</td><td class='r'>22 GB</td><td class='r'>228<br><span class='muted'>10 days</span></td><td class='r'>21</td><td class='r'>$11</td><td class='r'>6<br><span class='muted'>1 h on 8 GPUs</span></td><td class='r'>$17–$26</td></tr><tr class="pick"><td><strong>M</strong> · 411M</td><td class='r'>20B + 2.0B</td><td class='r'>49</td><td class='r'>88 GB</td><td class='r'>2,012<br><span class='muted'>84 days</span></td><td class='r'>181</td><td class='r'>$98</td><td class='r'>57<br><span class='muted'>7 h on 8 GPUs</span></td><td class='r'>$154–$228</td></tr><tr><td><strong>L</strong> · 1.61B</td><td class='r'>50B + 5.0B</td><td class='r'>31</td><td class='r'>220 GB</td><td class='r'>16,300<br><span class='muted'>679 days</span></td><td class='r'>1,468</td><td class='r'>$792</td><td class='r'>463<br><span class='muted'>58 h on 8 GPUs</span></td><td class='r'>$1,246–$1,848</td></tr><tr><td><strong>XL</strong> · 3.89B</td><td class='r'>80B + 10.0B</td><td class='r'>21</td><td class='r'>360 GB</td><td class='r'>66,230<br><span class='muted'>2,760 days</span></td><td class='r'>5,966</td><td class='r'>does not fit one GPU</td><td class='r'>1,882<br><span class='muted'>235 h on 8 GPUs</span></td><td class='r'>$5,063–$7,510</td></tr></tbody></table></div>
+    <p class="small muted">Assumptions:</p>
+    <ul class="small muted">
+      <li><strong>T4.</strong> 11.24 TFLOPS, measured from the 256-token run.</li>
+      <li><strong>A100 and H100.</strong> 40% of their dense bf16 peaks of 312 and 989 TFLOPS<sup class="cites">[<a href="#src-37" class="cite">37</a>, <a href="#src-38" class="cite">38</a>]</sup>. Comparable published runs reached 49–60% (llm.c) and 56% (TinyLlama)<sup class="cites">[<a href="#src-3" class="cite">3</a>, <a href="#src-39" class="cite">39</a>]</sup>. Pythia's GPU-hours work out to about 29% by my arithmetic<sup class="cites">[<a href="#src-40" class="cite">40</a>]</sup>.</li>
+      <li><strong>Colab rates.</strong> 1.19 compute units an hour for a T4 and 5.40 for an A100 40 GB (7.52 for 80 GB), as one person measured them in March 2026; Google does not publish them<sup class="cites">[<a href="#src-41" class="cite">41</a>]</sup>. 100 units are priced at about $10. Colab's page showed $11.79 with tax for one region<sup class="cites">[<a href="#src-42" class="cite">42</a>]</sup>.</li>
+      <li><strong>H100 rental.</strong> $2.69–3.99 per GPU-hour, seen 2026-10-16<sup class="cites">[<a href="#src-1" class="cite">1</a>, <a href="#src-2" class="cite">2</a>]</sup>.</li>
+      <li><strong>Not included.</strong> Activation recomputation (+33% compute where used) and failed or repeated runs.</li>
+    </ul>
+    <p class="small muted">As a cross-check, the same arithmetic gives 23 hours for llm.c's GPT-2 1.5B on 33.6B tokens at its reported 50% utilisation. It took 24 hours and $672<sup class="cites">[<a href="#src-43" class="cite">43</a>]</sup>.</p>
+  </div>
+  <div class="grid two">
+    <div class="card"><div class="label">The cheapest change: stop training on the T4</div><p>Per compute unit, an A100 40 GB delivers about 2.4× the training of a T4 (23 against 9.4 TFLOPS-hours per unit). It is also about 11× faster, and it has bf16 and FlashAttention, which the T4 lacks<sup class="cites">[<a href="#src-44" class="cite">44</a>, <a href="#src-45" class="cite">45</a>]</sup>. The ratio holds even at half the assumed utilisation. Colab lists A100, H100, L4 and G4 alongside the T4, subject to availability<sup class="cites">[<a href="#src-42" class="cite">42</a>]</sup>.</p></div>
+    <div class="card"><div class="label">Why M is my pick</div><p>It is the largest size that still trains on one GPU in about a week, fits Colab's A100 and needs no multi-GPU code. Its weights and 32k cache also fit the MacBook's GPU. Its shape is proven: SmolLM2-360M reached HellaSwag 54.5 with 4T tokens<sup class="cites">[<a href="#src-46" class="cite">46</a>]</sup>.</p><p>At 22B tokens it will be far below that, and I don't predict its score. What it will show is whether the modern recipe beats today's model at equal compute. That answer should come before anyone spends $5,063 on XL.</p></div>
+  </div>
+  <div class="sub">
+    <h3>What these shapes reach with trillions of tokens</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Model</th><th class="r">Parameters</th><th class="r">Training tokens</th><th class="r">HellaSwag</th><th class="r">PIQA</th><th>Scores from</th></tr></thead>
+      <tbody>
+        <tr><td>GPT-2 small (OpenAI); llm.c's reproduction</td><td class="r">124M</td><td class="r">not published; 10B</td><td class="r">29.4; 29.9</td><td class="r">–</td><td>llm.c<sup class="cites">[<a href="#src-3" class="cite">3</a>]</sup></td></tr>
+        <tr><td>MobileLLM-125M · shape of S</td><td class="r">125M</td><td class="r">1T</td><td class="r">38.9</td><td class="r">65.3</td><td>paper, zero-shot<sup class="cites">[<a href="#src-4" class="cite">4</a>]</sup></td></tr>
+        <tr><td>SmolLM2-135M · shape of S</td><td class="r">135M</td><td class="r">2T</td><td class="r">42.1</td><td class="r">68.4</td><td>card, zero-shot<sup class="cites">[<a href="#src-47" class="cite">47</a>]</sup></td></tr>
+        <tr><td>MobileLLM-350M · shape of M</td><td class="r">345M</td><td class="r">1T</td><td class="r">49.6</td><td class="r">68.6</td><td>paper, zero-shot<sup class="cites">[<a href="#src-4" class="cite">4</a>]</sup></td></tr>
+        <tr><td>SmolLM2-360M · shape of M</td><td class="r">360M</td><td class="r">4T</td><td class="r">54.5</td><td class="r">71.7</td><td>card, zero-shot<sup class="cites">[<a href="#src-46" class="cite">46</a>]</sup></td></tr>
+        <tr><td>Qwen3-1.7B-Base · shape of L</td><td class="r">1.7B</td><td class="r">36T</td><td class="r">60.5</td><td class="r">75.4</td><td>SmolLM3 card, zero-shot<sup class="cites">[<a href="#src-48" class="cite">48</a>, <a href="#src-15" class="cite">15</a>]</sup></td></tr>
+        <tr><td>Qwen3-4B-Base · shape of XL</td><td class="r">4.0B</td><td class="r">36T</td><td class="r">74.4</td><td class="r">77.6</td><td>SmolLM3 card, zero-shot<sup class="cites">[<a href="#src-48" class="cite">48</a>]</sup></td></tr>
+      </tbody>
+    </table></div>
+    <p class="small muted">Scores from different harnesses do not compare exactly, and the larger references were trained on 1,000 to 10,000 times the tokens planned here. They show the ceiling of each shape, not what these runs will reach. Random choice on HellaSwag scores 25.</p>
+  </div>
+</section>
+
+<section id="data">
+  <header><div class="eyebrow">Data</div><h2>How much data, and where to get it</h2>
+  <p>The compute-optimal amount is about 20 tokens per parameter<sup class="cites">[<a href="#src-7" class="cite">7</a>]</sup>. Small models now train far past it: SmolLM2-360M on 4T tokens, SmolLM3-3B on 11.2T and Qwen3 on 36T<sup class="cites">[<a href="#src-46" class="cite">46</a>, <a href="#src-29" class="cite">29</a>, <a href="#src-15" class="cite">15</a>]</sup>. Repeating data for up to about 4 epochs costs almost nothing<sup class="cites">[<a href="#src-49" class="cite">49</a>]</sup>. So your 5B tokens can serve S for several passes, but M and larger need new data.</p></header>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Size</th><th class="r">Compute-optimal (20×)</th><th class="r">Planned here</th><th class="r">Tokenised size on disk</th></tr></thead>
+    <tbody>
+      <tr><td><strong>S</strong> · 164M</td><td class='r'>3.3B</td><td class='r'>5B + 0.5B long</td><td class='r'>22 GB</td></tr><tr class="pick"><td><strong>M</strong> · 411M</td><td class='r'>8.2B</td><td class='r'>20B + 2.0B long</td><td class='r'>88 GB</td></tr><tr><td><strong>L</strong> · 1.61B</td><td class='r'>32.3B</td><td class='r'>50B + 5.0B long</td><td class='r'>220 GB</td></tr><tr><td><strong>XL</strong> · 3.89B</td><td class='r'>77.8B</td><td class='r'>80B + 10.0B long</td><td class='r'>360 GB</td></tr>
+    </tbody>
+  </table></div>
+  <p class="small muted">Tokens are stored as 4-byte integers because the vocabulary is larger than 65,536, so M's 22B tokens take 88 GB. That is more than the MacBook's free disk (40 GiB after the 5B build) and more than a free 15 GB Drive.</p>
+  <div class="sub">
+    <h3>Open sources</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Dataset</th><th>What it is</th><th class="r">Size</th><th>Licence and access</th><th>Role here</th></tr></thead>
+      <tbody>
+        <tr><td>FineWeb-Edu<sup class="cites">[<a href="#src-50" class="cite">50</a>]</sup></td><td>FineWeb pages scored as educational (3+ of 5)</td><td class="r">1.3T GPT-2 tokens</td><td>ODC-By, not gated</td><td>Main web source, already half of today's mix</td></tr>
+        <tr><td>DCLM-Baseline<sup class="cites">[<a href="#src-51" class="cite">51</a>]</sup></td><td>Classifier-filtered Common Crawl</td><td class="r">4T tokens</td><td>CC-BY-4.0</td><td>Second web source</td></tr>
+        <tr><td>FineWeb<sup class="cites">[<a href="#src-52" class="cite">52</a>]</sup></td><td>Cleaned English Common Crawl</td><td class="r">18.5T GPT-2 tokens</td><td>ODC-By</td><td>Today's other half; optional</td></tr>
+        <tr><td>The Stack v3<sup class="cites">[<a href="#src-53" class="cite">53</a>]</sup></td><td>Permissively licensed code from 173M repositories, grouped by repository, contents inline</td><td class="r">≈3.6T tokens</td><td>ODC-By, not gated, released July 2026</td><td>Code, and whole repositories for the long stage</td></tr>
+        <tr><td>Stack-Edu<sup class="cites">[<a href="#src-54" class="cite">54</a>]</sup></td><td>Educational code (Python 21.8B, Java 42.1B, …)</td><td class="r">125B SmolLM2 tokens</td><td>File IDs only; contents come from Software Heritage</td><td>Code for the final decay phase</td></tr>
+        <tr><td>FineMath<sup class="cites">[<a href="#src-55" class="cite">55</a>]</sup></td><td>Maths pages, two quality levels</td><td class="r">34B (3+), 9.6B (4+)</td><td>ODC-By</td><td>Maths</td></tr>
+        <tr><td>Cosmopedia v2<sup class="cites">[<a href="#src-56" class="cite">56</a>]</sup></td><td>Synthetic textbooks and stories</td><td class="r">28B tokens</td><td>ODC-By (SmolLM-Corpus)</td><td>Decay phase</td></tr>
+        <tr><td>FinePDFs<sup class="cites">[<a href="#src-57" class="cite">57</a>]</sup></td><td>Text from PDFs; documents twice as long as web pages on average</td><td class="r">≈3T, 1.19T English</td><td>ODC-By</td><td>Long documents</td></tr>
+        <tr><td>Dolma 3 Longmino<sup class="cites">[<a href="#src-58" class="cite">58</a>]</sup></td><td>Science PDFs longer than 8k tokens</td><td class="r">639B (106B at 32–64k)</td><td>ODC-By</td><td>Long documents</td></tr>
+        <tr><td>PG-19<sup class="cites">[<a href="#src-59" class="cite">59</a>]</sup></td><td>28,602 books from before 1919</td><td class="r">1.97B words</td><td>Apache-2.0 on its card</td><td>Long documents</td></tr>
+        <tr><td>ProLong 64K data<sup class="cites">[<a href="#src-60" class="cite">60</a>]</sup></td><td>Ready-made long-context mix: code repositories, books, FineWeb-Edu, FineWeb</td><td class="r">31B Llama-3 tokens</td><td>See card; re-tokenise</td><td>Template or source for the long stage</td></tr>
+        <tr><td>Wikipedia<sup class="cites">[<a href="#src-61" class="cite">61</a>]</sup>, peS2o<sup class="cites">[<a href="#src-62" class="cite">62</a>]</sup></td><td>Encyclopaedia; 39M academic papers</td><td class="r">6.4M articles; 42B words</td><td>CC BY-SA and GFDL; ODC-By</td><td>Knowledge-dense text for the decay phase</td></tr>
+        <tr><td>SmolTalk<sup class="cites">[<a href="#src-63" class="cite">63</a>]</sup></td><td>Instruction and chat examples</td><td class="r">1M samples</td><td>Apache-2.0 (new parts); reused parts keep their licences</td><td>Instruction tuning after pretraining</td></tr>
+        <tr><td>UltraFeedback<sup class="cites">[<a href="#src-64" class="cite">64</a>]</sup></td><td>Rated response pairs</td><td class="r">64k prompts</td><td>MIT</td><td>Optional preference tuning</td></tr>
+        <tr><td>Common Pile v0.1<sup class="cites">[<a href="#src-65" class="cite">65</a>]</sup></td><td>Openly licensed text only</td><td class="r">8 TB</td><td>Open licences per source</td><td>Alternative if licence purity matters</td></tr>
+      </tbody>
+    </table></div>
+    <p class="small muted">Sizes are counted in each card's own tokenizer, so they are not directly comparable. Measured on your validation text, cl100k needs about 3% fewer tokens than GPT-2's tokenizer and the same number as Llama 3's. ODC-By sets also bind users to Common Crawl's terms. Code datasets require following each file's original licence. Some instruction sets, such as parts of Tulu 3, are non-commercial<sup class="cites">[<a href="#src-66" class="cite">66</a>]</sup>.</p>
+  </div>
+  <div class="sub">
+    <h3>Proposed mix for M</h3>
+    <p>The stages follow SmolLM2's and SmolLM3's published mixes, scaled down<sup class="cites">[<a href="#src-67" class="cite">67</a>, <a href="#src-29" class="cite">29</a>]</sup>.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Stage</th><th class="r">Tokens</th><th>Context</th><th>Mix</th></tr></thead>
+      <tbody>
+        <tr><td>1 · main</td><td class="r">18B</td><td>4,096</td><td>85% web (FineWeb-Edu 55%, DCLM 30%), 12% code (The Stack v3), 3% maths (FineMath 3+). Constant learning rate.</td></tr>
+        <tr><td>2 · decay</td><td class="r">2B</td><td>4,096</td><td>58% web, 24% code (Stack-Edu or Stack v3 Python), 14% maths (FineMath 4+), 4% Cosmopedia v2. The learning rate falls linearly to zero.</td></tr>
+        <tr><td>3 · long</td><td class="r">2B</td><td>32,768</td><td>40% long (books, whole repositories, long PDFs and long FineWeb-Edu pages), 60% stage-2 mix. The RoPE base rises to 1,500,000.</td></tr>
+        <tr><td>4 · instruct</td><td class="r">≈0.5B</td><td>4,096</td><td>SmolTalk, then optionally a preference pass on UltraFeedback.</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+  <div class="sub">
+    <h3>Tokenizer: keep cl100k</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Tokenizer</th><th class="r">Vocabulary</th><th class="r">FineWeb-Edu</th><th class="r">FineWeb</th><th class="r">Python</th></tr></thead>
+      <tbody>
+        <tr><td>GPT-2</td><td class="r">50,257</td><td class="r">4.61</td><td class="r">4.47</td><td class="r">2.38</td></tr>
+        <tr class="pick"><td>cl100k_base (today)</td><td class="r">100,277</td><td class="r">4.75</td><td class="r">4.62</td><td class="r">4.22</td></tr>
+        <tr><td>o200k_base</td><td class="r">200,019</td><td class="r">4.80</td><td class="r">4.68</td><td class="r">4.20</td></tr>
+        <tr><td>SmolLM2</td><td class="r">49,152</td><td class="r">4.55</td><td class="r">4.32</td><td class="r">3.39</td></tr>
+        <tr><td>Llama 3.2 and SmolLM3</td><td class="r">128,256</td><td class="r">4.75</td><td class="r">4.62</td><td class="r">4.22</td></tr>
+        <tr><td>Qwen3</td><td class="r">151,665</td><td class="r">4.65</td><td class="r">4.51</td><td class="r">4.13</td></tr>
+        <tr><td>Gemma 3</td><td class="r">262,145</td><td class="r">4.66</td><td class="r">4.49</td><td class="r">3.30</td></tr>
+      </tbody>
+    </table></div>
+    <p class="small muted">Bytes per token, higher is better. Measured 2026-10-16 on the 1,352 validation documents (4.9 MB) and this repository's 40 Python files (111 kB).</p>
+    <p>cl100k compresses about as well as any of these vocabularies, up to 200k, and ties for best on code. It needs no new dependency and keeps the 5B tokens already prepared. Its cost is the table: 35% of S and 23% of M. A 49k vocabulary would shrink that and halve storage, since token ids would fit in 2 bytes. It would also need 4–7% more tokens on English and 25% more on code. That trade is listed under <a href="#decisions">Decisions for you</a>.</p>
+  </div>
+</section>
+
+<section id="recipe">
+  <header><div class="eyebrow">Training</div><h2>Training recipe</h2></header>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Setting</th><th>Today</th><th>Proposed</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Schedule</td><td>3% warmup, cosine to a tenth of the peak, total fixed in advance</td><td>Warmup, then constant, then a linear decay to zero over the last 10–20% (WSD)</td><td>Matches cosine's final loss without fixing the length in advance, and a run can be extended from the checkpoint before the decay<sup class="cites">[<a href="#src-68" class="cite">68</a>, <a href="#src-69" class="cite">69</a>]</sup>. Decaying to zero beat decaying to 10%<sup class="cites">[<a href="#src-70" class="cite">70</a>]</sup>. SmolLM3 used this schedule<sup class="cites">[<a href="#src-29" class="cite">29</a>]</sup>.</td></tr>
+      <tr><td>Precision</td><td>fp16 with a gradient scaler, on every CUDA GPU</td><td>bf16 on A100 and H100; fp16 with a scaler only on a T4</td><td>The T4 has no bf16<sup class="cites">[<a href="#src-5" class="cite">5</a>]</sup>. BLOOM's fp16 divergences went away with bf16<sup class="cites">[<a href="#src-21" class="cite">21</a>]</sup>.</td></tr>
+      <tr><td>Attention kernel</td><td>PyTorch's memory-efficient kernel on the T4</td><td>FlashAttention through PyTorch on A100 and H100</td><td>FlashAttention needs Ampere or newer; on a T4 only the memory-efficient and plain kernels run<sup class="cites">[<a href="#src-44" class="cite">44</a>, <a href="#src-45" class="cite">45</a>]</sup>.</td></tr>
+      <tr><td>Optimiser</td><td>AdamW 0.9 / 0.95, decay 0.1 on matrices, clipping at 1.0</td><td>Same, with ε 1e-8 and no decay on the token table</td><td>Decay on embeddings raised OLMo 2's spike score from 0.092 to 0.16<sup class="cites">[<a href="#src-22" class="cite">22</a>]</sup>. SmolLM3 uses the same settings<sup class="cites">[<a href="#src-29" class="cite">29</a>]</sup>.</td></tr>
+      <tr><td>Learning rate</td><td>6e-4 peak</td><td>Chosen by a sweep of 3–4 short runs at size S</td><td>No source gives a value for these shapes at this batch size. muP-style scaling can carry it from S to larger sizes<sup class="cites">[<a href="#src-71" class="cite">71</a>, <a href="#src-69" class="cite">69</a>]</sup>.</td></tr>
+      <tr><td>Tokens per update</td><td>65,536</td><td>About 0.5M for M; more for L and XL</td><td>llm.c used 524,288 for GPT-2<sup class="cites">[<a href="#src-3" class="cite">3</a>]</sup>. SmolLM3 used 2.36M at 3B<sup class="cites">[<a href="#src-29" class="cite">29</a>]</sup>.</td></tr>
+      <tr><td>Loss</td><td>Cross-entropy over full logits</td><td>Cross-entropy plus z-loss 1e-4, computed in chunks</td><td>Stability<sup class="cites">[<a href="#src-20" class="cite">20</a>, <a href="#src-19" class="cite">19</a>]</sup>, and memory at long context (see above).</td></tr>
+      <tr><td>Several GPUs</td><td>Not supported</td><td>Data parallel for M on 8 GPUs; fully sharded for L and XL</td><td>Sharding divides the 16 bytes per parameter across the GPUs<sup class="cites">[<a href="#src-6" class="cite">6</a>]</sup>.</td></tr>
+      <tr><td>Evaluation</td><td>Validation loss</td><td>Validation loss plus HellaSwag, ARC, PIQA and MMLU at fixed intervals; needle and RULER-style retrieval at 4k to 32k after the long stage</td><td>Loss alone cannot be compared across tokenizers or with published models.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="inference">
+  <header><div class="eyebrow">Inference</div><h2>Running it on the MacBook</h2>
+  <p>The MacBook has an Intel CPU, a Radeon Pro 5300M with 4 GB, 16 GB of RAM and PyTorch 2.2.2, the last release for Intel Macs.</p></header>
+  <div class='table-wrap'><table><thead><tr><th>Size</th><th class='r'>Weights in fp16</th><th class='r'>KV cache at 32k</th><th class='r'>Together</th><th>On the 4 GB Radeon Pro 5300M</th></tr></thead><tbody><tr><td><strong>S</strong> · 164M</td><td class='r'>0.33 GB</td><td class='r'>0.75 GB</td><td class='r'>1.08 GB</td><td>fits in fp16 with PyTorch; long prompts go in chunks</td></tr><tr class="pick"><td><strong>M</strong> · 411M</td><td class='r'>0.82 GB</td><td class='r'>1.34 GB</td><td class='r'>2.16 GB</td><td>fits in fp16 with PyTorch; long prompts go in chunks</td></tr><tr><td><strong>L</strong> · 1.61B</td><td class='r'>3.23 GB</td><td class='r'>3.76 GB</td><td class='r'>6.99 GB</td><td>does not fit; needs 4-bit weights and a quantised KV cache, or the CPU</td></tr><tr><td><strong>XL</strong> · 3.89B</td><td class='r'>7.78 GB</td><td class='r'>4.83 GB</td><td class='r'>12.61 GB</td><td>does not fit; needs 4-bit weights and a quantised KV cache, or the CPU</td></tr></tbody></table></div>
+  <ul>
+    <li><strong>KV cache.</strong> Each new token then costs one position instead of a pass over the whole text, which is what makes 32k usable at all.</li>
+    <li><strong>Gaps in PyTorch 2.2.2, measured 2026-10-16.</strong> The model code has to work around them:
+      <ul>
+        <li>no built-in RMSNorm, so the model defines its own;</li>
+        <li>no grouped-query option in its attention function, so keys and values are repeated across their query heads;</li>
+        <li>no FlexAttention;</li>
+        <li>no bf16 on the GPU, so checkpoints trained in bf16 are converted to fp16 for the MacBook.</li>
+      </ul></li>
+    <li><strong>Long prompts in chunks.</strong> PyTorch 2.2.2's attention on this GPU stores the whole score matrix (measured 2026-10-16): one head took 128 MiB at 4k tokens, 512 MiB at 8k and 2,048 MiB at 16k. At 32k one head would need about 8 GiB, so a long prompt has to go into the KV cache a few hundred tokens at a time. I haven't run a full 32k prompt on the MacBook.</li>
+    <li><strong>Context length from the checkpoint.</strong> <code>generate.py</code> should read the context length and shape from the checkpoint, not from the global config. Today it cannot load the 256-token files.</li>
+    <li><strong>L and XL.</strong> These need 4-bit weights. A user report says llama.cpp's Metal backend produces garbage on this GPU and its Vulkan backend works<sup class="cites">[<a href="#src-10" class="cite">10</a>]</sup>. That route also needs an export to a format llama.cpp reads, which I haven't tried.</li>
+  </ul>
+</section>
+
+<section id="roadmap">
+  <header><div class="eyebrow">Plan</div><h2>Roadmap</h2><p>Each step is one reviewable pull request, in this order, and each ends with something measured.</p></header>
+  <ol class="steps">
+    <li><div><h4>Measure today's model</h4><p>Add a HellaSwag, ARC and PIQA evaluation next to validation loss, and run it on the step-16,000 checkpoint and on the first 1,024-token checkpoints. <strong>Verifies:</strong> a baseline to beat. Checking the harness against a published score needs a way to load a published model, which may need a new dependency.</p></div></li>
+    <li><div><h4>The modern model</h4><p>RMSNorm, RoPE, SwiGLU, grouped-query attention, QK-norm, no biases and a tied table, all set by a size config (S, M, L, XL). <strong>Verifies:</strong> parameter counts equal this report's formula, and the published MobileLLM counts with their vocabulary. Later tokens never change earlier outputs. RoPE scores depend only on relative position. 5 KV heads repeated equal 15 full heads with copied weights. A forward pass runs on the MacBook's GPU in fp16.</p></div></li>
+    <li><div><h4>Generation with a KV cache</h4><p>Cache keys and values, read the shape and context from the checkpoint, and use fp16 on the MacBook. <strong>Verifies:</strong> cached and uncached greedy generation give identical tokens, and speed at 1k, 8k and 32k is measured.</p></div></li>
+    <li><div><h4>Trainer upgrades</h4><p>WSD schedule, bf16 or fp16 by GPU, z-loss, chunked loss, no decay on the table, activation checkpointing, document masking where supported, data-parallel training. <strong>Verifies:</strong> a resumed run equals an uninterrupted one, as for today's trainer, and the schedule can be extended from the pre-decay checkpoint.</p></div></li>
+    <li><div><h4>Data pipeline for several sources</h4><p>A staged mixer for web, code and maths, tokenised into shards that stream from storage, plus a long-document builder for the 32k stage. <strong>Verifies:</strong> the mix proportions, document counts and separators of each shard against its manifest.</p></div></li>
+    <li><div><h4>Pilot at size S</h4><p>Train S on the existing 5B tokens, with a short learning-rate sweep, and set it against today's model at equal tokens. <strong>Verifies:</strong> that the modern recipe wins at equal compute, before money goes into M.</p></div></li>
+    <li><div><h4>Main run at size M</h4><p>20B tokens at 4k, then 2B at 32k, on a Colab A100 or a rented 8×H100 node. <strong>Verifies:</strong> benchmarks against the pilot and today's model, and long-context retrieval at 4k to 32k.</p></div></li>
+    <li><div><h4>Instruction tuning</h4><p>SmolTalk, then optionally a preference pass. <strong>Verifies:</strong> the model answers prompts instead of continuing them.</p></div></li>
+    <li><div><h4>Decide on L or XL</h4><p>With M's measured results and a rental budget, add sharded multi-GPU training and run the larger size. <strong>Verifies:</strong> the cost per token against this report's estimate.</p></div></li>
+  </ol>
+</section>
+
+<section id="decisions">
+  <header><div class="eyebrow">Your call</div><h2>Decisions for you</h2></header>
+  <ol>
+    <li><strong>Compute budget.</strong> The options are T4 only, paid Colab compute units on A100s, or a rented 8×H100 node. This choice sets the size: S on a T4 takes about 10 days, M costs about $98 on Colab's A100, and XL costs $5,063–$7,510 rented.</li>
+    <li><strong>Target size.</strong> M is my recommendation. XL is your stated preference.</li>
+    <li><strong>Tokenizer.</strong> Keeping cl100k is my recommendation. A ≤65k vocabulary would mean smaller small models and half the storage, but worse code compression, re-tokenising the 5B tokens and a new dependency.</li>
+    <li><strong>Where the tokenised data lives.</strong> M needs 88 GB. The options are a larger Drive plan, a private Hugging Face dataset, or tokenising on the training machine each time.</li>
+    <li><strong>Context target.</strong> 32k is my recommendation. A second stage to 64k would follow SmolLM3.</li>
+    <li><strong>Licences.</strong> If the model will be shared, decide whether data and instruction sets with attribution, share-alike or non-commercial terms are acceptable.</li>
+    <li><strong>New dependencies.</strong> I will ask step by step, for example for an evaluation harness or for checking against published models.</li>
+  </ol>
+</section>
+
+<section id="unverified">
+  <header><div class="eyebrow">Limits of this report</div><h2>What is not verified</h2></header>
+  <ul>
+    <li><strong>Colab rates.</strong> Compute units per hour come from one third-party measurement in March 2026. The H100 rate is unknown, and A100 access on paid plans is subject to availability<sup class="cites">[<a href="#src-72" class="cite">72</a>, <a href="#src-42" class="cite">42</a>]</sup>.</li>
+    <li><strong>Utilisation.</strong> The 40% assumed for the A100 and H100 is not measured for these shapes; published comparable runs range from 29% to 60%. The T4 rate was measured only on today's model at 256-token windows.</li>
+    <li><strong>torch.compile and masking on the T4.</strong> Whether torch.compile helps on a T4 is untested, since Triton officially supports compute capability 8.0 and up<sup class="cites">[<a href="#src-73" class="cite">73</a>]</sup>. The cost of document masking on a T4 is also unmeasured.</li>
+    <li><strong>Long context at small sizes.</strong> Published long-context recipes come from 3B–8B models; none is tested at 164M–411M.</li>
+    <li><strong>Muon in fp16.</strong> No source tests it.</li>
+    <li><strong>Scores.</strong> The benchmark results of S, M, L and XL at these token counts are not predicted here; step 1 and the pilot will measure them.</li>
+    <li><strong>Prices.</strong> Seen 2026-10-16; they change.</li>
+    <li><strong>Exporting checkpoints.</strong> Running our checkpoints in llama.cpp or Hugging Face libraries has not been tried.</li>
+  </ul>
+</section>
+
+<section id="sources"><header><div class="eyebrow">References</div><h2>Sources</h2><p class="small muted">Every sourced claim was checked against the page it came from on 2026-10-16. Measured figures come from scripts run on the MacBook against this repository and its data.</p></header><ol class="sources"><li id="src-1" value="1">RunPod pricing. <a href="https://www.runpod.io/pricing">https://www.runpod.io/pricing</a></li><li id="src-2" value="2">Lambda pricing. <a href="https://lambda.ai/pricing">https://lambda.ai/pricing</a></li><li id="src-3" value="3">llm.c: reproducing GPT-2 (124M) on 10B FineWeb tokens. <a href="https://github.com/karpathy/llm.c/discussions/481">https://github.com/karpathy/llm.c/discussions/481</a></li><li id="src-4" value="4">Liu et al., MobileLLM. <a href="https://arxiv.org/html/2402.14905">https://arxiv.org/html/2402.14905</a></li><li id="src-5" value="5">NVIDIA T4 product page. <a href="https://www.nvidia.com/en-us/data-center/tesla-t4/">https://www.nvidia.com/en-us/data-center/tesla-t4/</a></li><li id="src-6" value="6">Rajbhandari et al., ZeRO. <a href="https://ar5iv.labs.arxiv.org/html/1910.02054">https://ar5iv.labs.arxiv.org/html/1910.02054</a></li><li id="src-7" value="7">Hoffmann et al., Training compute-optimal large language models (Chinchilla). <a href="https://ar5iv.labs.arxiv.org/html/2203.15556">https://ar5iv.labs.arxiv.org/html/2203.15556</a></li><li id="src-8" value="8">Sardana et al., Beyond Chinchilla-optimal. <a href="https://arxiv.org/abs/2401.00448">https://arxiv.org/abs/2401.00448</a></li><li id="src-9" value="9">Qwen3-4B GGUF files. <a href="https://huggingface.co/Qwen/Qwen3-4B-GGUF">https://huggingface.co/Qwen/Qwen3-4B-GGUF</a></li><li id="src-10" value="10">llama.cpp issue 19563: Metal output on a Radeon Pro 5300M. <a href="https://github.com/ggml-org/llama.cpp/issues/19563">https://github.com/ggml-org/llama.cpp/issues/19563</a></li><li id="src-11" value="11">modded-nanogpt speedrun. <a href="https://github.com/KellerJordan/modded-nanogpt">https://github.com/KellerJordan/modded-nanogpt</a></li><li id="src-12" value="12">Su et al., RoFormer: rotary position embedding. <a href="https://arxiv.org/abs/2104.09864">https://arxiv.org/abs/2104.09864</a></li><li id="src-13" value="13">EleutherAI, Rotary embeddings: a relative revolution. <a href="https://blog.eleuther.ai/rotary-embeddings/">https://blog.eleuther.ai/rotary-embeddings/</a></li><li id="src-14" value="14">Xiong et al., Effective long-context scaling (adjusted base frequency). <a href="https://arxiv.org/html/2309.16039">https://arxiv.org/html/2309.16039</a></li><li id="src-15" value="15">Qwen3 technical report. <a href="https://arxiv.org/html/2505.09388">https://arxiv.org/html/2505.09388</a></li><li id="src-16" value="16">Zhang and Sennrich, Root mean square layer normalization. <a href="https://arxiv.org/abs/1910.07467">https://arxiv.org/abs/1910.07467</a></li><li id="src-17" value="17">Shazeer, GLU variants improve Transformer. <a href="https://arxiv.org/html/2002.05202">https://arxiv.org/html/2002.05202</a></li><li id="src-18" value="18">Ainslie et al., GQA: grouped-query attention. <a href="https://arxiv.org/abs/2305.13245">https://arxiv.org/abs/2305.13245</a></li><li id="src-19" value="19">Wortsman et al., Small-scale proxies for large-scale Transformer training instabilities. <a href="https://arxiv.org/html/2309.14322">https://arxiv.org/html/2309.14322</a></li><li id="src-20" value="20">Chowdhery et al., PaLM. <a href="https://ar5iv.labs.arxiv.org/html/2204.02311">https://ar5iv.labs.arxiv.org/html/2204.02311</a></li><li id="src-21" value="21">BigScience, BLOOM. <a href="https://arxiv.org/html/2211.05100">https://arxiv.org/html/2211.05100</a></li><li id="src-22" value="22">OLMo 2 technical report. <a href="https://arxiv.org/html/2501.00656">https://arxiv.org/html/2501.00656</a></li><li id="src-23" value="23">Llama 3 herd of models. <a href="https://arxiv.org/html/2407.21783">https://arxiv.org/html/2407.21783</a></li><li id="src-24" value="24">Gao et al., How to train long-context language models (effectively). <a href="https://arxiv.org/html/2410.02660">https://arxiv.org/html/2410.02660</a></li><li id="src-25" value="25">OLMo-2-0425-1B config. <a href="https://huggingface.co/allenai/OLMo-2-0425-1B">https://huggingface.co/allenai/OLMo-2-0425-1B</a></li><li id="src-26" value="26">OLMoE. <a href="https://arxiv.org/html/2409.02060">https://arxiv.org/html/2409.02060</a></li><li id="src-27" value="27">Gloeckle et al., Multi-token prediction. <a href="https://arxiv.org/html/2404.19737">https://arxiv.org/html/2404.19737</a></li><li id="src-28" value="28">Gemma 3 technical report. <a href="https://arxiv.org/html/2503.19786">https://arxiv.org/html/2503.19786</a></li><li id="src-29" value="29">Hugging Face, SmolLM3 blog. <a href="https://huggingface.co/blog/smollm3">https://huggingface.co/blog/smollm3</a></li><li id="src-30" value="30">Moonshot AI, Muon is scalable for LLM training. <a href="https://arxiv.org/html/2502.16982">https://arxiv.org/html/2502.16982</a></li><li id="src-31" value="31">Benchmarking pretraining optimizers at 0.1B to 1.2B. <a href="https://arxiv.org/abs/2509.02046">https://arxiv.org/abs/2509.02046</a></li><li id="src-32" value="32">Olmo 3 technical report. <a href="https://arxiv.org/html/2512.13961">https://arxiv.org/html/2512.13961</a></li><li id="src-33" value="33">Fu et al., Data engineering for scaling language models to 128K context. <a href="https://arxiv.org/abs/2402.10171">https://arxiv.org/abs/2402.10171</a></li><li id="src-34" value="34">Korthikanti et al., Reducing activation recomputation. <a href="https://ar5iv.labs.arxiv.org/html/2205.05198">https://ar5iv.labs.arxiv.org/html/2205.05198</a></li><li id="src-35" value="35">Peng et al., YaRN. <a href="https://arxiv.org/html/2309.00071">https://arxiv.org/html/2309.00071</a></li><li id="src-36" value="36">Kaplan et al., Scaling laws for neural language models. <a href="https://ar5iv.labs.arxiv.org/html/2001.08361">https://ar5iv.labs.arxiv.org/html/2001.08361</a></li><li id="src-37" value="37">NVIDIA A100 datasheet. <a href="https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-us-nvidia-1758950-r4-web.pdf">https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet-us-nvidia-1758950-r4-web.pdf</a></li><li id="src-38" value="38">NVIDIA H100 product page. <a href="https://www.nvidia.com/en-us/data-center/h100/">https://www.nvidia.com/en-us/data-center/h100/</a></li><li id="src-39" value="39">TinyLlama. <a href="https://github.com/jzhang38/TinyLlama">https://github.com/jzhang38/TinyLlama</a></li><li id="src-40" value="40">Biderman et al., Pythia. <a href="https://ar5iv.labs.arxiv.org/html/2304.01373">https://ar5iv.labs.arxiv.org/html/2304.01373</a></li><li id="src-41" value="41">McCormick, Colab GPUs: features and pricing (compute units per hour, measured March 2026). <a href="https://mccormickml.com/2024/04/23/colab-gpus-features-and-pricing/">https://mccormickml.com/2024/04/23/colab-gpus-features-and-pricing/</a></li><li id="src-42" value="42">Google Colab plans. <a href="https://colab.research.google.com/signup">https://colab.research.google.com/signup</a></li><li id="src-43" value="43">llm.c: GPT-2 (1558M) in 24 hours on one 8xH100 node. <a href="https://github.com/karpathy/llm.c/discussions/677">https://github.com/karpathy/llm.c/discussions/677</a></li><li id="src-44" value="44">FlashAttention repository. <a href="https://github.com/Dao-AILab/flash-attention">https://github.com/Dao-AILab/flash-attention</a></li><li id="src-45" value="45">PyTorch scaled-dot-product-attention backend rules (sdp_utils.cpp). <a href="https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp">https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/transformers/cuda/sdp_utils.cpp</a></li><li id="src-46" value="46">SmolLM2-360M model card and config. <a href="https://huggingface.co/HuggingFaceTB/SmolLM2-360M">https://huggingface.co/HuggingFaceTB/SmolLM2-360M</a></li><li id="src-47" value="47">SmolLM2-135M model card and config. <a href="https://huggingface.co/HuggingFaceTB/SmolLM2-135M">https://huggingface.co/HuggingFaceTB/SmolLM2-135M</a></li><li id="src-48" value="48">SmolLM3-3B-Base model card (scores for SmolLM3, Qwen3, Llama 3.2). <a href="https://huggingface.co/HuggingFaceTB/SmolLM3-3B-Base">https://huggingface.co/HuggingFaceTB/SmolLM3-3B-Base</a></li><li id="src-49" value="49">Muennighoff et al., Scaling data-constrained language models. <a href="https://arxiv.org/abs/2305.16264">https://arxiv.org/abs/2305.16264</a></li><li id="src-50" value="50">FineWeb-Edu dataset card. <a href="https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu">https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu</a></li><li id="src-51" value="51">DCLM-Baseline 1.0 dataset card. <a href="https://huggingface.co/datasets/mlfoundations/dclm-baseline-1.0">https://huggingface.co/datasets/mlfoundations/dclm-baseline-1.0</a></li><li id="src-52" value="52">FineWeb dataset card. <a href="https://huggingface.co/datasets/HuggingFaceFW/fineweb">https://huggingface.co/datasets/HuggingFaceFW/fineweb</a></li><li id="src-53" value="53">The Stack v3 (training subset) dataset card. <a href="https://huggingface.co/datasets/HuggingFaceCode/stack-v3-train">https://huggingface.co/datasets/HuggingFaceCode/stack-v3-train</a></li><li id="src-54" value="54">Stack-Edu dataset card. <a href="https://huggingface.co/datasets/HuggingFaceTB/stack-edu">https://huggingface.co/datasets/HuggingFaceTB/stack-edu</a></li><li id="src-55" value="55">FineMath dataset card. <a href="https://huggingface.co/datasets/HuggingFaceTB/finemath">https://huggingface.co/datasets/HuggingFaceTB/finemath</a></li><li id="src-56" value="56">Hugging Face, SmolLM blog (SmolLM-Corpus, Cosmopedia v2). <a href="https://huggingface.co/blog/smollm">https://huggingface.co/blog/smollm</a></li><li id="src-57" value="57">FinePDFs dataset card. <a href="https://huggingface.co/datasets/HuggingFaceFW/finepdfs">https://huggingface.co/datasets/HuggingFaceFW/finepdfs</a></li><li id="src-58" value="58">Dolma 3 Longmino pool dataset card. <a href="https://huggingface.co/datasets/allenai/dolma3_longmino_pool">https://huggingface.co/datasets/allenai/dolma3_longmino_pool</a></li><li id="src-59" value="59">PG-19 (DeepMind). <a href="https://github.com/google-deepmind/pg19">https://github.com/google-deepmind/pg19</a></li><li id="src-60" value="60">ProLong data, 64K stage. <a href="https://huggingface.co/datasets/princeton-nlp/prolong-data-64K">https://huggingface.co/datasets/princeton-nlp/prolong-data-64K</a></li><li id="src-61" value="61">Wikipedia dataset card (Wikimedia). <a href="https://huggingface.co/datasets/wikimedia/wikipedia">https://huggingface.co/datasets/wikimedia/wikipedia</a></li><li id="src-62" value="62">peS2o dataset card. <a href="https://huggingface.co/datasets/allenai/peS2o">https://huggingface.co/datasets/allenai/peS2o</a></li><li id="src-63" value="63">SmolTalk dataset card. <a href="https://huggingface.co/datasets/HuggingFaceTB/smoltalk">https://huggingface.co/datasets/HuggingFaceTB/smoltalk</a></li><li id="src-64" value="64">UltraFeedback dataset card. <a href="https://huggingface.co/datasets/openbmb/UltraFeedback">https://huggingface.co/datasets/openbmb/UltraFeedback</a></li><li id="src-65" value="65">The Common Pile v0.1. <a href="https://arxiv.org/abs/2506.05209">https://arxiv.org/abs/2506.05209</a></li><li id="src-66" value="66">Tulu 3 SFT mixture dataset card. <a href="https://huggingface.co/datasets/allenai/tulu-3-sft-mixture">https://huggingface.co/datasets/allenai/tulu-3-sft-mixture</a></li><li id="src-67" value="67">SmolLM2 paper. <a href="https://arxiv.org/html/2502.02737">https://arxiv.org/html/2502.02737</a></li><li id="src-68" value="68">Hägele et al., Scaling laws and compute-optimal training beyond fixed training durations. <a href="https://arxiv.org/html/2405.18392">https://arxiv.org/html/2405.18392</a></li><li id="src-69" value="69">MiniCPM. <a href="https://arxiv.org/html/2404.06395">https://arxiv.org/html/2404.06395</a></li><li id="src-70" value="70">Straight to zero: linear decay to zero. <a href="https://arxiv.org/abs/2502.15938">https://arxiv.org/abs/2502.15938</a></li><li id="src-71" value="71">Yang et al., Tensor Programs V (muP). <a href="https://arxiv.org/abs/2203.03466">https://arxiv.org/abs/2203.03466</a></li><li id="src-72" value="72">Google Colab FAQ. <a href="https://research.google.com/colaboratory/faq.html">https://research.google.com/colaboratory/faq.html</a></li><li id="src-73" value="73">Triton README (supported GPUs). <a href="https://github.com/triton-lang/triton/blob/main/README.md">https://github.com/triton-lang/triton/blob/main/README.md</a></li></ol></section>
+<footer>
+  <strong>mini-llm Modernization Plan</strong>
+  <span>Written 2026-10-16 on branch docs/architecture-modernization. Sizes, FLOPs, memory and cost come from the formulas stated in the sizing section; tokenizer and document-length figures were measured on the repository's own data.</span>
+</footer>
+</main>
+</body>
+</html>
